@@ -844,38 +844,36 @@ function renderAjustes() {
   if (btnExp) btnExp.onclick = exportarBackup;
 }
 
-function renderInfo() {
+async function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
-  fetch('version.json', { cache: 'no-store' })
-    .then(r => r.json())
-    .then(local => {
-      const fecha = local.date || '';
-      const instalada = local.version;
-      fetch(
+  try {
+    const localResp = await fetch('version.json', { cache: 'no-store' });
+    const local = await localResp.json();
+    const fecha = local.date || '';
+    const instalada = local.version || '';
+    try {
+      const remoteResp = await fetch(
         'https://raw.githubusercontent.com/Adriamo1/CarteraPro/main/version.json',
         { cache: 'no-store' }
-      )
-        .then(r => r.json())
-        .then(remoto => {
-          const ultima = remoto.version;
-          document.getElementById('info-cont').innerHTML = `
-            <p>Versión instalada: ${instalada}</p>
-            <p>Última versión disponible: ${ultima}</p>
-            <p>Fecha de creación: ${fecha}</p>
-            <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
-            <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
-        })
-        .catch(() => {
-          document.getElementById('info-cont').innerHTML = `
-            <p>Versión instalada: ${instalada}</p>
-            <p>Fecha de creación: ${fecha}</p>
-            <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
-            <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
-        });
-    })
-    .catch(() => {
-      document.getElementById('info-cont').textContent = 'No disponible';
-    });
+      );
+      const remoto = await remoteResp.json();
+      const ultima = remoto.version;
+      document.getElementById('info-cont').innerHTML = `
+        <p>Versión instalada: ${instalada}</p>
+        <p>Última versión disponible: ${ultima}</p>
+        <p>Fecha de creación: ${fecha}</p>
+        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+    } catch {
+      document.getElementById('info-cont').innerHTML = `
+        <p>Versión instalada: ${instalada}</p>
+        <p>Fecha de creación: ${fecha}</p>
+        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+    }
+  } catch {
+    document.getElementById('info-cont').textContent = 'No disponible';
+  }
 }
 
 // --------- Gráficos Dashboard ---------

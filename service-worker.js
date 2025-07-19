@@ -8,7 +8,8 @@ const urlsToCache = [
   '/icon192.png',
   '/icon512.png',
   // Añade tus scripts si quieres cachearlos:
-  '/js/app.js'
+  '/js/app.js',
+  '/version.json'
   // Añade widgets y vistas según vayas completando
 ];
 
@@ -21,7 +22,9 @@ self.addEventListener('install', function(event) {
 
 self.addEventListener('fetch', function(event) {
   if (event.request.url.endsWith('version.json')) {
-    event.respondWith(fetch(event.request));
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
     return;
   }
   event.respondWith(
