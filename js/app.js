@@ -10,6 +10,56 @@ db.version(1).stores({
 
 const app = document.getElementById("app");
 
+// --- Ajustes de usuario (tema, bancos, brokers...) ---
+const SETTINGS_PREFIX = "carteraPRO_settings_";
+
+function saveUserSetting(key, value) {
+  localStorage.setItem(SETTINGS_PREFIX + key, JSON.stringify(value));
+}
+
+function getUserSetting(key) {
+  const v = localStorage.getItem(SETTINGS_PREFIX + key);
+  try { return v ? JSON.parse(v) : null; } catch { return null; }
+}
+
+function getBrokers() {
+  return getUserSetting("brokers") || [
+    "Trade Republic", "Revolut", "Binance", "DEGIRO",
+    "MyInvestor", "Interactive Brokers"
+  ];
+}
+function setBrokers(list) { saveUserSetting("brokers", list); }
+
+function getBancos() {
+  return getUserSetting("bancos") || [
+    "BBVA", "CaixaBank", "Santander", "ING",
+    "Openbank", "EVO", "Revolut"
+  ];
+}
+function setBancos(list) { saveUserSetting("bancos", list); }
+
+function setTema(tema) {
+  localStorage.setItem(SETTINGS_PREFIX + "tema", tema);
+  document.body.setAttribute("data-theme", tema);
+}
+function getTema() {
+  return localStorage.getItem(SETTINGS_PREFIX + "tema") || "auto";
+}
+
+function setPrivacidad(val) {
+  localStorage.setItem(SETTINGS_PREFIX + "privacidad", !!val);
+}
+function getPrivacidad() {
+  return localStorage.getItem(SETTINGS_PREFIX + "privacidad") === "true";
+}
+
+function setIdioma(idioma) {
+  localStorage.setItem(SETTINGS_PREFIX + "idioma", idioma);
+}
+function getIdioma() {
+  return localStorage.getItem(SETTINGS_PREFIX + "idioma") || "es";
+}
+
 const vistas = {
   "#inicio": renderResumen,
   "#dashboard": renderDashboard,
@@ -273,11 +323,55 @@ async function checkForUpdates() {
   }
 }
 function renderAjustes() {
-  app.innerHTML = `␊
-    <div class="card">␊
-      <h2>Ajustes</h2>␊
+  const brokers = getBrokers();
+  const bancos = getBancos();
+  const tema = getTema();
+
+  app.innerHTML = `
+    <div class="card">
+      <h2>Ajustes</h2>
       <p class="mini-explica">Configura la aplicación a tu gusto: idioma, tema y listados de bancos o brokers habituales.</p>
-    </div>`;␊
+
+      <section>
+        <h3>Brokers y Plataformas</h3>
+        <textarea id="txt-brokers" rows="4" style="width:100%;">${brokers.join('\n')}</textarea>
+        <button id="btn-save-brokers" class="btn">Guardar brokers</button>
+      </section>
+
+      <section>
+        <h3>Bancos</h3>
+        <textarea id="txt-bancos" rows="4" style="width:100%;">${bancos.join('\n')}</textarea>
+        <button id="btn-save-bancos" class="btn">Guardar bancos</button>
+      </section>
+
+      <section>
+        <h3>Tema de la aplicación</h3>
+        <select id="sel-tema">
+          <option value="auto" ${tema === 'auto' ? 'selected' : ''}>Automático (según sistema)</option>
+          <option value="light" ${tema === 'light' ? 'selected' : ''}>Claro</option>
+          <option value="dark" ${tema === 'dark' ? 'selected' : ''}>Oscuro</option>
+        </select>
+        <button id="btn-save-tema" class="btn">Guardar tema</button>
+      </section>
+    </div>`;
+
+  document.getElementById('btn-save-brokers').onclick = () => {
+    const nuevos = document.getElementById('txt-brokers').value.split('\n').map(s => s.trim()).filter(Boolean);
+    setBrokers(nuevos);
+    alert('Brokers guardados.');
+  };
+
+  document.getElementById('btn-save-bancos').onclick = () => {
+    const nuevos = document.getElementById('txt-bancos').value.split('\n').map(s => s.trim()).filter(Boolean);
+    setBancos(nuevos);
+    alert('Bancos guardados.');
+  };
+
+  document.getElementById('btn-save-tema').onclick = () => {
+    const nuevoTema = document.getElementById('sel-tema').value;
+    setTema(nuevoTema);
+    alert('Tema guardado. Recarga la página si no se aplica automáticamente.');
+  };
 }
 // Exportar CSV
 function exportarCSV(array, filename) {
@@ -295,6 +389,7 @@ function exportarCSV(array, filename) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
   checkForUpdates();
