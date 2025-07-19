@@ -1217,7 +1217,7 @@ function mostrarModalAnalisis() {
   };
 }
 
-// ----- Modal Importar Activos -----
+// ----- Modal Importación de datos -----
 function crearModalImportar() {
   if (document.getElementById('import-modal')) return;
   const div = document.createElement('div');
@@ -1225,12 +1225,12 @@ function crearModalImportar() {
   div.className = 'modal hidden';
   div.innerHTML = `
     <div class="modal-content">
-      <h3>Importar Activos</h3>
+      <h3>Importar Datos</h3>
       <input type="file" id="file-import" accept=".csv,.json" />
       <div id="import-res" class="mini-explica"></div>
       <div id="import-list"></div>
-      <button id="confirm-import" class="btn">Importar</button>
-      <button type="button" class="btn" id="cancel-import">Cerrar</button>
+      <button id="confirm-import" class="btn">Guardar</button>
+      <button type="button" class="btn" id="cancel-import">Cancelar</button>
     </div>`;
   document.body.appendChild(div);
 }
@@ -1241,59 +1241,125 @@ function mostrarModalImportar() {
   const inp = document.getElementById('file-import');
   const res = document.getElementById('import-res');
   const list = document.getElementById('import-list');
-  let paraGuardar = [];
+  let nuevosActivos = [];
+  let nuevasTrans = [];
   modal.classList.remove('hidden');
 
   inp.onchange = async () => {
+    res.textContent = '';
+    list.innerHTML = '';
+    nuevosActivos = [];
+    nuevasTrans = [];
     const file = inp.files[0];
     if (!file) return;
     const text = await file.text();
-    let datos = [];
+    let data;
     try {
       if (file.name.toLowerCase().endsWith('.json')) {
-        datos = JSON.parse(text);
+        data = JSON.parse(text);
       } else {
-        datos = parseCSV(text);
+        data = parseCSV(text);
       }
     } catch {
       res.textContent = 'Archivo no válido';
       return;
     }
+
+    let activosRaw = [], transRaw = [];
+    if (Array.isArray(data)) {
+      if (data[0] && (data[0].fecha || data[0].tipo === 'compra' || data[0].tipo === 'venta')) {
+        transRaw = data;
+      } else {
+        activosRaw = data;
+      }
+    } else if (data && typeof data === 'object') {
+      activosRaw = Array.isArray(data.activos) ? data.activos : activosRaw;
+      transRaw = Array.isArray(data.transacciones) ? data.transacciones : transRaw;
+    }
+
     const existentes = await db.activos.toArray();
-    const tickerSet = new Set(existentes.map(a => (a.ticker || '').toUpperCase()));
-    const nuevos = [];
-    const errores = [];
-    datos.forEach((row,i) => {
+    const mapaTickerId = {};
+    existentes.forEach(a => mapaTickerId[(a.ticker || '').toUpperCase()] = a.id);
+    const tickersUsados = new Set(Object.keys(mapaTickerId));
+    const avisos = [];
+
+    activosRaw.forEach((row,i) => {
       const nombre = (row.nombre || '').trim();
-      const ticker = (row.ticker || '').trim();
-      if (!nombre || !ticker) {
-        errores.push(`Línea ${i+2}: campos vacíos`);
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      if (!nombre || !tkr) {
+        avisos.push(`Línea ${i+1} de activos: campos incompletos`);
         return;
       }
-      if (tickerSet.has(ticker.toUpperCase())) {
-        errores.push(`Línea ${i+2}: duplicado ${ticker}`);
+      if (tickersUsados.has(tkr)) {
+        avisos.push(`Línea ${i+1} de activos: duplicado ${tkr}`);
         return;
       }
-      tickerSet.add(ticker.toUpperCase());
-      nuevos.push({
+      tickersUsados.add(tkr);
+      nuevosActivos.push({
         nombre,
-        ticker,
+        ticker: tkr,
         tipo: row.tipo || '',
         moneda: row.moneda || 'EUR',
         sector: row.sector || 'Desconocido'
       });
     });
-    paraGuardar = nuevos;
-    list.innerHTML = nuevos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
-    if (errores.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${errores.join('<br>')}</div>`;
-    res.textContent = `${nuevos.length} nuevos activos. ${errores.length} errores.`;
+
+    transRaw.forEach((row,i) => {
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      const id = parseInt(row.activoId);
+      if (!tkr && !id) {
+        avisos.push(`Línea ${i+1} de transacciones: falta activo`);
+        return;
+      }
+      if (!row.tipo || !row.fecha) {
+        avisos.push(`Línea ${i+1} de transacciones: campos incompletos`);
+        return;
+      }
+      nuevasTrans.push({
+        ticker: tkr,
+        activoId: id || null,
+        tipo: row.tipo,
+        fecha: row.fecha,
+        cantidad: parseFloat(row.cantidad || 0),
+        precio: parseFloat(row.precio || 0),
+        comision: parseFloat(row.comision || 0),
+        broker: row.broker || ''
+      });
+    });
+
+    list.innerHTML = nuevosActivos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    if (avisos.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${avisos.join('<br>')}</div>`;
+    res.textContent = `${nuevosActivos.length} nuevos activos - ${nuevasTrans.length} transacciones`;
   };
 
   modal.querySelector('#confirm-import').onclick = async () => {
-    if (!paraGuardar.length) { modal.classList.add('hidden'); return; }
-    await db.activos.bulkAdd(paraGuardar);
-    modal.classList.add('hidden');
-    renderActivos();
+    try {
+      const tickerId = {};
+      for (const act of nuevosActivos) {
+        const id = await db.activos.add(act);
+        tickerId[act.ticker.toUpperCase()] = id;
+      }
+      for (const t of nuevasTrans) {
+        let actId = t.activoId;
+        if (!actId && t.ticker) {
+          actId = tickerId[t.ticker.toUpperCase()] || (await db.activos.where('ticker').equalsIgnoreCase(t.ticker).first())?.id;
+        }
+        if (!actId) continue;
+        await db.transacciones.add({
+          activoId: actId,
+          tipo: t.tipo,
+          fecha: t.fecha,
+          cantidad: t.cantidad,
+          precio: t.precio,
+          comision: t.comision,
+          broker: t.broker
+        });
+      }
+      modal.classList.add('hidden');
+      renderActivos();
+    } catch (e) {
+      res.textContent = 'Error al importar: ' + e.message;
+    }
   };
 
   modal.querySelector('#cancel-import').onclick = () => {
