@@ -429,6 +429,7 @@ async function renderCuentas() {
   let html = `<div class="card">
       <h2>Cuentas</h2>
       <button id="toggle-cuentas" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
+      <button id="add-mov" class="btn">Añadir movimiento</button>
       <form id="form-cuenta">
         <input name="nombre" placeholder="Nombre" required />
         <input name="banco" placeholder="Banco" required />
@@ -460,6 +461,10 @@ async function renderCuentas() {
   document.getElementById('toggle-cuentas').onclick = () => {
     setVista('cuentas', modo === 'detalle' ? 'resumen' : 'detalle');
     renderCuentas();
+  };
+
+  document.getElementById('add-mov').onclick = () => {
+    mostrarModalMovimiento(cuentas);
   };
 
   document.getElementById('form-cuenta').onsubmit = e => {
@@ -881,6 +886,76 @@ function exportarCSV(array, filename) {
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
+}
+
+// ----- Modal Movimientos -----
+function crearModalMovimiento() {
+  if (document.getElementById('mov-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'mov-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nuevo movimiento</h3>
+      <form id="form-mov">
+        <select id="sel-cuenta" name="cuentaId" required></select>
+        <input type="date" name="fecha" required />
+        <input type="number" step="any" name="importe" placeholder="Importe" required />
+        <select name="tipo" id="sel-tipo">
+          <option value="Ingreso">Ingreso</option>
+          <option value="Gasto">Gasto</option>
+          <option value="Gasto Tarjeta">Gasto Tarjeta</option>
+        </select>
+        <input name="descripcion" placeholder="Concepto" />
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-mov">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+async function mostrarModalMovimiento(cuentas) {
+  crearModalMovimiento();
+  const modal = document.getElementById('mov-modal');
+  const lista = document.getElementById('sel-cuenta');
+  lista.innerHTML = cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  modal.classList.remove('hidden');
+
+  modal.querySelector('#cancel-mov').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  modal.querySelector('#form-mov').onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    data.cuentaId = parseInt(data.cuentaId);
+    data.importe = parseFloat(data.importe);
+    const cuenta = await db.cuentas.get(data.cuentaId);
+    await db.movimientos.add({
+      cuentaId: data.cuentaId,
+      fecha: data.fecha,
+      importe: data.importe,
+      descripcion: data.descripcion || '',
+      tipo: data.tipo
+    });
+    await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
+
+    if (data.tipo === 'Gasto Tarjeta') {
+      const porcentaje = getSavebackRate();
+      const importeSave = Math.abs(data.importe) * (porcentaje / 100);
+      await db.movimientos.add({
+        cuentaId: data.cuentaId,
+        fecha: data.fecha,
+        importe: importeSave,
+        descripcion: 'Saveback pendiente',
+        tipo: 'saveback'
+      });
+    }
+
+    modal.classList.add('hidden');
+    renderCuentas();
+  };
 }
 
 // ----- Modal Transacciones -----
