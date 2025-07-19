@@ -1030,9 +1030,11 @@ function crearModalTransaccion() {
         <input type="number" step="any" name="cantidad" placeholder="Cantidad" required />
         <input type="number" step="any" name="precio" id="inp-precio" placeholder="Precio" required />
         <button type="button" class="btn" id="btn-precio">📈 Obtener precio actual</button>
+        <div id="currency-info" class="mini-explica"></div>
         <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
         <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
         <datalist id="lista-brokers"></datalist>
+        <div id="rate-info" class="mini-explica"></div>
         <div id="total-eur" class="mini-explica"></div>
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="cancel-trans">Cancelar</button>
@@ -1055,7 +1057,10 @@ async function mostrarModalTransaccion(activos) {
   const cantEl = modal.querySelector('[name="cantidad"]');
   const comEl = document.getElementById('inp-comision');
   const totalEl = document.getElementById('total-eur');
+  const curEl = document.getElementById('currency-info');
+  const rateEl = document.getElementById('rate-info');
   const btnPrecio = document.getElementById('btn-precio');
+  let currentTc = 1;
 
   async function actualizarPrecio() {
     const opt = lista.selectedOptions[0];
@@ -1066,32 +1071,25 @@ async function mostrarModalTransaccion(activos) {
     const info = await obtenerPrecioYMoneda(ticker, tipo, moneda, parseFloat(precioEl.value));
     precioEl.value = info.precio;
     precioEl.dataset.moneda = info.moneda;
-    const tc = await obtenerTipoCambio(info.moneda);
-    calcularTotal(tc);
+    curEl.textContent = `Divisa: ${info.moneda}`;
+    currentTc = await obtenerTipoCambio(info.moneda);
+    rateEl.textContent = `TC aplicado: ${currentTc}`;
+    calcularTotal(currentTc);
   }
 
   function calcularTotal(tc) {
     const cant = parseFloat(cantEl.value) || 0;
     const precio = parseFloat(precioEl.value) || 0;
     const com = parseFloat(comEl.value) || 0;
-    const total = cant * precio / (tc || 1) + com;
+    const total = cant * precio * (tc || 1) + com;
     totalEl.textContent = `Total EUR aprox.: ${formatCurrency(total)}`;
   }
 
   lista.onchange = actualizarPrecio;
   btnPrecio.onclick = actualizarPrecio;
-  cantEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
-  precioEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
-  comEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
+  cantEl.oninput = () => calcularTotal(currentTc);
+  precioEl.oninput = () => calcularTotal(currentTc);
+  comEl.oninput = () => calcularTotal(currentTc);
 
   actualizarPrecio();
 
@@ -1288,6 +1286,8 @@ async function obtenerPrecioYMoneda(ticker, tipo, moneda, manual) {
 
 async function obtenerTipoCambio(moneda) {
   if (moneda === 'EUR') return 1;
+  const rates = getUserSetting('exchangeRates') || {};
+  if (rates[moneda]) return parseFloat(rates[moneda]);
   const reg = await db.tiposCambio.where('moneda').equals(moneda).last();
   if (reg) return parseFloat(reg.tasa || 1);
   return getTipoCambio();
