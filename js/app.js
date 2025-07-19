@@ -684,7 +684,10 @@ function renderAnalisisValue() {
 
 async function checkForUpdates() {
   try {
-    const resp = await fetch('version.json', {cache: 'no-store'});
+    const resp = await fetch(
+      'https://raw.githubusercontent.com/Adriamo1/CarteraPro/main/version.json',
+      { cache: 'no-store' }
+    );
     const data = await resp.json();
     const local = getUserSetting('version');
     if (local && local !== data.version) {
@@ -695,7 +698,7 @@ async function checkForUpdates() {
     } else {
       saveUserSetting('version', data.version);
     }
-  } catch(e) {
+  } catch (e) {
     console.log('Sin conexión para comprobar actualizaciones');
   }
 }
@@ -836,17 +839,34 @@ function renderAjustes() {
 
 function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
-  fetch('version.json', {cache:'no-store'})
+  fetch('version.json', { cache: 'no-store' })
     .then(r => r.json())
-    .then(d => {
-      const fecha = d.date || '';
-      document.getElementById('info-cont').innerHTML = `
-        <p>Versión: ${d.version}</p>
-        <p>Fecha: ${fecha}</p>
-        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
-        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+    .then(local => {
+      const fecha = local.date || '';
+      const instalada = local.version;
+      fetch(
+        'https://raw.githubusercontent.com/Adriamo1/CarteraPro/main/version.json',
+        { cache: 'no-store' }
+      )
+        .then(r => r.json())
+        .then(remoto => {
+          const ultima = remoto.version;
+          document.getElementById('info-cont').innerHTML = `
+            <p>Versión instalada: ${instalada}</p>
+            <p>Última versión disponible: ${ultima}</p>
+            <p>Fecha de creación: ${fecha}</p>
+            <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+            <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+        })
+        .catch(() => {
+          document.getElementById('info-cont').innerHTML = `
+            <p>Versión instalada: ${instalada}</p>
+            <p>Fecha de creación: ${fecha}</p>
+            <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+            <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+        });
     })
-    .catch(()=>{
+    .catch(() => {
       document.getElementById('info-cont').textContent = 'No disponible';
     });
 }
