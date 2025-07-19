@@ -42,7 +42,7 @@ function renderResumen() {
         <div class="kpi">🔹 Activos: ${a}</div>
         <div class="kpi">📈 Transacciones: ${t}</div>
       </div>
-      <p class="mini-explica">Este es el resumen de tu cartera local.</p>
+      <p class="mini-explica">Este es el resumen de tu cartera local. Desde aquí podrás conocer rápidamente el número de activos registrados y todas tus transacciones.</p>
     </div>`;
   });
 }
@@ -58,6 +58,7 @@ function renderDashboard() {
     app.innerHTML = `
     <div class="card">
       <h2>Panel de control</h2>
+      <p class="mini-explica">Consulta de forma rápida el estado global de tus inversiones.</p>
       <p>💰 Valor total activos: ${valorTotal.toFixed(2)} €</p>
       <p>🏦 Saldo total cuentas: ${saldoTotal.toFixed(2)} €</p>
       <p>🔄 Transacciones: ${trans.length}</p>
@@ -66,10 +67,12 @@ function renderDashboard() {
 }
 
 function renderActivos() {
-  db.activos.toArray().then(activos => {
+   db.activos.toArray().then(activos => {
+    const total = activos.length;
     app.innerHTML = `
     <div class="card">
       <h2>Activos</h2>
+      <p class="mini-explica">Gestiona aquí los valores y productos en los que inviertes. Total registrados: ${total}.</p>
       <form id="form-activo">
         <input name="nombre" placeholder="Nombre" required />
         <input name="ticker" placeholder="Ticker" required />
@@ -100,9 +103,11 @@ function renderActivos() {
 function renderTransacciones() {
   Promise.all([db.transacciones.toArray(), db.activos.toArray()]).then(([trans, activos]) => {
     const mapa = Object.fromEntries(activos.map(a => [a.id, a.nombre]));
+    const total = trans.length;
     app.innerHTML = `
     <div class="card">
       <h2>Transacciones</h2>
+      <p class="mini-explica">Aquí puedes registrar compras y ventas de tus activos. Total registradas: ${total}.</p>
       <button class="btn" id="exportar-trans">Exportar Transacciones (CSV)</button>
       <ul>
         ${trans.map(t => `<li>${t.fecha} - ${t.tipo} ${t.cantidad} de ${mapa[t.activoId] || "?"} a ${t.precio}€</li>`).join("")}
@@ -268,11 +273,11 @@ async function checkForUpdates() {
   }
 }
 function renderAjustes() {
-  app.innerHTML = `
-    <div class="card">
-      <h2>Ajustes</h2>
-      <p>Próximamente podrás cambiar configuración local, idioma, modo oscuro, etc.</p>
-    </div>`;
+  app.innerHTML = `␊
+    <div class="card">␊
+      <h2>Ajustes</h2>␊
+      <p class="mini-explica">Configura la aplicación a tu gusto: idioma, tema y listados de bancos o brokers habituales.</p>
+    </div>`;␊
 }
 // Exportar CSV
 function exportarCSV(array, filename) {
