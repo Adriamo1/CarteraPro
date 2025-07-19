@@ -48,7 +48,9 @@ function processApiQueue() {
     .then(d => resolve(d))
     .catch(() => resolve(null))
     .finally(() => {
-      state.settings.lastExchangeUpdate = new Date().toISOString();
+      if (/exchangerate/i.test(url)) {
+        state.settings.lastExchangeUpdate = new Date().toISOString();
+      }
       processApiQueue.running = false;
       processApiQueue();
     });
@@ -1277,11 +1279,12 @@ function mostrarModalImportar() {
       transRaw = Array.isArray(data.transacciones) ? data.transacciones : transRaw;
     }
 
-    const existentes = await db.activos.toArray();
-    const mapaTickerId = {};
-    existentes.forEach(a => mapaTickerId[(a.ticker || '').toUpperCase()] = a.id);
-    const tickersUsados = new Set(Object.keys(mapaTickerId));
-    const avisos = [];
+  const existentes = await db.activos.toArray();
+  const mapaTickerId = {};
+  existentes.forEach(a => mapaTickerId[(a.ticker || '').toUpperCase()] = a.id);
+  const tickersUsados = new Set(Object.keys(mapaTickerId));
+  const avisos = [];
+  const transKeySet = new Set();
 
     activosRaw.forEach((row,i) => {
       const nombre = (row.nombre || '').trim();
@@ -1315,6 +1318,12 @@ function mostrarModalImportar() {
         avisos.push(`Línea ${i+1} de transacciones: campos incompletos`);
         return;
       }
+      const clave = `${id||tkr}-${row.tipo}-${row.fecha}-${row.cantidad}`;
+      if (transKeySet.has(clave)) {
+        avisos.push(`Línea ${i+1} de transacciones: duplicada`);
+        return;
+      }
+      transKeySet.add(clave);
       nuevasTrans.push({
         ticker: tkr,
         activoId: id || null,
@@ -1327,7 +1336,9 @@ function mostrarModalImportar() {
       });
     });
 
-    list.innerHTML = nuevosActivos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    const activosPreview = nuevosActivos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    const transPreview = nuevasTrans.slice(0,5).map(t => `<div>${t.fecha} ${t.tipo} ${t.cantidad} ${t.ticker||('#'+t.activoId)}</div>`).join('');
+    list.innerHTML = activosPreview + (transPreview ? `<h4>Transacciones</h4>${transPreview}` : '');
     if (avisos.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${avisos.join('<br>')}</div>`;
     res.textContent = `${nuevosActivos.length} nuevos activos - ${nuevasTrans.length} transacciones`;
   };
