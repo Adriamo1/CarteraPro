@@ -1,5 +1,5 @@
 // service-worker.js
-const CACHE_NAME = 'cartera-pro-valpha-0.7.1.4';
+const CACHE_NAME = 'cartera-pro-valpha-0.7.1.5';
 const urlsToCache = [
   '/',
   '/index.html',
