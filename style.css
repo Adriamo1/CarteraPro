@@ -302,3 +302,13 @@ footer {
     margin-left: var(--sidebar-width);
   }
 }
+
+footer a.author-link {
+  color: #000;
+  text-decoration: underline;
+  text-decoration-color: #8b0000;
+}
+
+footer a.author-link:hover {
+  color: #ff0;
+}
