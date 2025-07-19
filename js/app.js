@@ -847,8 +847,14 @@ function renderAjustes() {
 async function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
   try {
-    const localResp = await fetch('version.json', { cache: 'no-store' });
-    const local = await localResp.json();
+    let local;
+    try {
+      const localResp = await fetch('version.json', { cache: 'no-store' });
+      local = await localResp.json();
+    } catch {
+      const el = document.getElementById('version-data');
+      local = el ? JSON.parse(el.textContent) : {};
+    }
     const fecha = local.date || '';
     const instalada = local.version || '';
     try {
