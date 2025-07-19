@@ -37,25 +37,30 @@
 /* General layout */
 body {
   margin: 0;
-  display: flex;
   font-family: 'Segoe UI', sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
 }
 
 #sidebar {
-  width: var(--sidebar-width);
   background: var(--sidebar-bg);
   color: var(--sidebar-txt);
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow);
   padding: 20px 0;
-  position: fixed;
-  left: 0;
-  top: 0;
+}
+
+@media (min-width: 681px) {
+  #sidebar {
+    width: var(--sidebar-width);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
 }
 
 #sidebar .logo {
@@ -72,12 +77,17 @@ body {
   margin: 0;
 }
 #sidebar li a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 14px 24px;
   text-decoration: none;
   color: var(--sidebar-txt);
   font-weight: 500;
   transition: background var(--transition);
+}
+#sidebar li a::before {
+  content: attr(data-icon);
 }
 #sidebar li a:hover,
 #sidebar li a.active {
@@ -86,9 +96,9 @@ body {
 }
 
 main {
-  margin-left: var(--sidebar-width);
   padding: var(--gap-lg);
-  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .card {
@@ -155,21 +165,38 @@ footer {
 }
 
 @media (max-width: 680px) {
+  body {
+    display: flex;
+    flex-direction: column;
+  }
   #sidebar {
-    transform: translateX(-100%);
-    transition: transform var(--transition);
-    width: var(--sidebar-width);
     position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 50px;
+    overflow-y: auto;
+    transition: width var(--transition);
     z-index: 1000;
   }
   #sidebar.abierto {
-    transform: translateX(0);
+    width: var(--sidebar-width);
+  }
+  #sidebar.mini .logo {
+    display: none;
+  }
+  #sidebar.mini li a span {
+    display: none;
   }
   #menu-toggle {
     display: block;
   }
   main {
-    margin-left: 0;
+    margin-left: 50px;
     padding-top: 60px;
+    transition: margin-left var(--transition);
+  }
+  #sidebar.abierto ~ .main-content main {
+    margin-left: var(--sidebar-width);
   }
 }
