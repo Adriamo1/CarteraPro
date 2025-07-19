@@ -864,20 +864,26 @@ async function renderInfo() {
       );
       const remoto = await remoteResp.json();
       const ultima = remoto.version;
-      document.getElementById('info-cont').innerHTML = `
-        <p>Versión instalada: ${instalada}</p>
-        <p>Última versión disponible: ${ultima}</p>
-        <p>Fecha de creación: ${fecha}</p>
-        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
-        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+        document.getElementById('info-cont').innerHTML = `
+          <p>Versión instalada: ${instalada}</p>
+          <p>Última versión disponible: ${ultima}</p>
+          <p>Fecha de creación: ${fecha}</p>
+          <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+          <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>
+          <p><button class="btn" id="btn-check-updates">Buscar actualizaciones</button></p>`;
+        const btn = document.getElementById('btn-check-updates');
+        if (btn) btn.onclick = checkForUpdates;
+      } catch {
+        document.getElementById('info-cont').innerHTML = `
+          <p>Versión instalada: ${instalada}</p>
+          <p>Fecha de creación: ${fecha}</p>
+          <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+          <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>
+          <p><button class="btn" id="btn-check-updates">Buscar actualizaciones</button></p>`;
+        const btn2 = document.getElementById('btn-check-updates');
+        if (btn2) btn2.onclick = checkForUpdates;
+      }
     } catch {
-      document.getElementById('info-cont').innerHTML = `
-        <p>Versión instalada: ${instalada}</p>
-        <p>Fecha de creación: ${fecha}</p>
-        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
-        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
-    }
-  } catch {
     document.getElementById('info-cont').textContent = 'No disponible';
   }
 }
