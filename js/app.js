@@ -346,6 +346,7 @@ async function renderActivos() {
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
+        <button type="button" class="btn" id="importar-activos">Importar CSV/JSON</button>
         <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa</button>
       </form>`;
 
@@ -385,6 +386,10 @@ async function renderActivos() {
   document.getElementById("exportar-activos").onclick = async () => {
     const data = await db.activos.toArray();
     exportarCSV(data, "activos.csv");
+  };
+
+  document.getElementById('importar-activos').onclick = () => {
+    mostrarModalImportar();
   };
 
   document.getElementById('btn-analisis-value').onclick = () => {
@@ -924,6 +929,18 @@ function exportarCSV(array, filename) {
   a.click();
 }
 
+function parseCSV(text) {
+  const rows = text.trim().split(/\r?\n/);
+  if (!rows.length) return [];
+  const headers = rows.shift().split(/[,;]\s*/).map(h => h.trim());
+  return rows.filter(Boolean).map(line => {
+    const cols = line.split(/[,;]\s*/);
+    const obj = {};
+    headers.forEach((h,i)=> obj[h] = (cols[i] || '').trim());
+    return obj;
+  });
+}
+
 // ----- Modal Movimientos -----
 function crearModalMovimiento() {
   if (document.getElementById('mov-modal')) return;
@@ -1164,6 +1181,90 @@ function mostrarModalAnalisis() {
     } catch {
       res.textContent = 'No se pudo obtener datos';
     }
+  };
+}
+
+// ----- Modal Importar Activos -----
+function crearModalImportar() {
+  if (document.getElementById('import-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'import-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Importar Activos</h3>
+      <input type="file" id="file-import" accept=".csv,.json" />
+      <div id="import-res" class="mini-explica"></div>
+      <div id="import-list"></div>
+      <button id="confirm-import" class="btn">Importar</button>
+      <button type="button" class="btn" id="cancel-import">Cerrar</button>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalImportar() {
+  crearModalImportar();
+  const modal = document.getElementById('import-modal');
+  const inp = document.getElementById('file-import');
+  const res = document.getElementById('import-res');
+  const list = document.getElementById('import-list');
+  let paraGuardar = [];
+  modal.classList.remove('hidden');
+
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    const text = await file.text();
+    let datos = [];
+    try {
+      if (file.name.toLowerCase().endsWith('.json')) {
+        datos = JSON.parse(text);
+      } else {
+        datos = parseCSV(text);
+      }
+    } catch {
+      res.textContent = 'Archivo no válido';
+      return;
+    }
+    const existentes = await db.activos.toArray();
+    const tickerSet = new Set(existentes.map(a => (a.ticker || '').toUpperCase()));
+    const nuevos = [];
+    const errores = [];
+    datos.forEach((row,i) => {
+      const nombre = (row.nombre || '').trim();
+      const ticker = (row.ticker || '').trim();
+      if (!nombre || !ticker) {
+        errores.push(`Línea ${i+2}: campos vacíos`);
+        return;
+      }
+      if (tickerSet.has(ticker.toUpperCase())) {
+        errores.push(`Línea ${i+2}: duplicado ${ticker}`);
+        return;
+      }
+      tickerSet.add(ticker.toUpperCase());
+      nuevos.push({
+        nombre,
+        ticker,
+        tipo: row.tipo || '',
+        moneda: row.moneda || 'EUR',
+        sector: row.sector || 'Desconocido'
+      });
+    });
+    paraGuardar = nuevos;
+    list.innerHTML = nuevos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    if (errores.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${errores.join('<br>')}</div>`;
+    res.textContent = `${nuevos.length} nuevos activos. ${errores.length} errores.`;
+  };
+
+  modal.querySelector('#confirm-import').onclick = async () => {
+    if (!paraGuardar.length) { modal.classList.add('hidden'); return; }
+    await db.activos.bulkAdd(paraGuardar);
+    modal.classList.add('hidden');
+    renderActivos();
+  };
+
+  modal.querySelector('#cancel-import').onclick = () => {
+    modal.classList.add('hidden');
   };
 }
 
