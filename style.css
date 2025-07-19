@@ -38,6 +38,29 @@
   }
 }
 
+/* Tema manual por atributo data-theme */
+body[data-theme="light"] {
+  --color-bg: #fdfdfd;
+  --color-card: #ffffff;
+  --color-text: #2b3e51;
+  --color-muted: #7d8ca1;
+  --color-positivo: #2e7d32;
+  --color-negativo: #c62828;
+  --sidebar-bg: #f0f4f9;
+  --sidebar-txt: #2b3e51;
+}
+
+body[data-theme="dark"] {
+  --color-bg: #1e2530;
+  --color-card: #2c3444;
+  --color-text: #f0f4f8;
+  --color-muted: #9aa7bb;
+  --color-positivo: #66bb6a;
+  --color-negativo: #ef5350;
+  --sidebar-bg: #1a202b;
+  --sidebar-txt: #e0e6ee;
+}
+
 /* General layout */
 body {
   margin: 0;
