@@ -684,17 +684,21 @@ function renderAnalisisValue() {
 
 async function checkForUpdates() {
   try {
-    const resp = await fetch('version.json', {cache: 'no-store'});
+    const remote = await fetch(
+      'https://raw.githubusercontent.com/adrianmonge/CarteraPro/main/version.json',
+      { cache: 'no-store' }
+    ).then(r => r.json()).catch(() => null);
+    if (remote) saveUserSetting('latest_version', remote);
+
+    const resp = await fetch('version.json', { cache: 'no-store' });
     const data = await resp.json();
     saveUserSetting('version_info', data);
-    const local = getUserSetting('version');
-    if (local && local !== data.version) {
-      if (confirm(`Nueva versión ${data.version} disponible. ¿Recargar?`)) {
-        saveUserSetting('version', data.version);
-        location.reload(true);
+    saveUserSetting('version', data.version);
+
+    if (remote && remote.version !== data.version) {
+      if (confirm(`Nueva versión ${remote.version} disponible. ¿Abrir GitHub?`)) {
+        window.open('https://github.com/adrianmonge/CarteraPro', '_blank');
       }
-    } else {
-      saveUserSetting('version', data.version);
     }
   } catch(e) {
     console.log('Sin conexión para comprobar actualizaciones');
@@ -837,22 +841,33 @@ function renderAjustes() {
 
 function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
-  const mostrar = d => {
-    const fecha = d.date || '';
+  const mostrar = (local, remote) => {
+    const fecha = local.date || '';
+    const ultima = remote ? remote.version : (getUserSetting('latest_version')?.version || '');
     document.getElementById('info-cont').innerHTML = `
-      <p>Versión: ${d.version}</p>
+      <p>Versión actual: ${local.version}</p>
+      <p>Última versión disponible: <span id="ultima-version">${ultima}</span></p>
       <p>Fecha: ${fecha}</p>
       <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
       <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
   };
+
+  const promRemote = fetch(
+    'https://raw.githubusercontent.com/adrianmonge/CarteraPro/main/version.json',
+    { cache: 'no-store' }
+  ).then(r => r.json()).catch(() => null);
+
   const local = getUserSetting('version_info');
   if (local) {
-    mostrar(local);
+    promRemote.then(r => { if (r) saveUserSetting('latest_version', r); mostrar(local, r); });
   } else {
-    fetch('version.json', {cache:'no-store'})
+    fetch('version.json', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { saveUserSetting('version_info', d); mostrar(d); })
-      .catch(()=>{
+      .then(d => {
+        saveUserSetting('version_info', d);
+        promRemote.then(r => { if (r) saveUserSetting('latest_version', r); mostrar(d, r); });
+      })
+      .catch(() => {
         document.getElementById('info-cont').textContent = 'No disponible';
       });
   }
