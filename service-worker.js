@@ -24,6 +24,10 @@ self.addEventListener('install', function(event) {
 });
 
 self.addEventListener('fetch', function(event) {
+  if (event.request.url.endsWith('version.json')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   event.respondWith(
     caches.match(event.request)
       .then(response => response || fetch(event.request))
