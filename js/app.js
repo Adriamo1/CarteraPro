@@ -374,7 +374,7 @@ async function renderActivos() {
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
         <button type="button" class="btn" id="importar-activos">Importar CSV/JSON</button>
-        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa</button>
+        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa estilo Value</button>
       </form>`;
 
   if (modo === 'resumen') {
@@ -612,6 +612,14 @@ async function analizarEmpresa(ticker) {
     payout: r.summaryDetail?.payoutRatio?.raw ? r.summaryDetail.payoutRatio.raw * 100 : 0,
     crecimientoIngresos5a: r.defaultKeyStatistics?.revenueGrowth?.raw ? r.defaultKeyStatistics.revenueGrowth.raw * 100 : 0
   };
+  d.moat = (d.roe > 15 && d.roic > 10) ? 'Amplio' : 'Reducido';
+  if (d.fcfYield > 0) {
+    d.valorBuffett = +(d.precioActual * (10 / d.fcfYield)).toFixed(2);
+    d.margenSeguridad = +((1 - d.precioActual / d.valorBuffett) * 100).toFixed(2);
+  } else {
+    d.valorBuffett = 0;
+    d.margenSeguridad = 0;
+  }
   d.recomendacion = recomendacionBuffett(d);
   return d;
 }
@@ -642,17 +650,17 @@ function renderAnalisisValue() {
         Descripción: datos.descripcion,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr>
           <td data-label="Campo">${k}</td>
@@ -1191,17 +1199,17 @@ function mostrarModalAnalisis() {
         Sector: datos.sector,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr><td data-label="Campo">${k}</td><td data-label="Valor">${v}</td></tr>`).join('');
       res.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
