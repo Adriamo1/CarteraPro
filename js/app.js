@@ -13,9 +13,15 @@ db.version(2).stores({
   movimientos: "++id,cuentaId,fecha,importe,descripcion"
 });
 
+// Versión 3: tabla de préstamos (TIN de cuentas remuneradas o hipotecas)
+db.version(3).stores({
+  prestamos: "++id,tin"
+});
+
 const app = document.getElementById("app");
 
 function formatCurrency(num) {
+  if (getPrivacidad()) return '•••';
   return Number(num || 0).toLocaleString('es-ES', {
     style: 'currency',
     currency: 'EUR'
@@ -86,6 +92,7 @@ const vistas = {
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
   "#cuentas": renderCuentas,
+  "#prestamos": renderPrestamos,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
   "#resumen": renderResumen,
@@ -346,6 +353,24 @@ async function renderCuentas() {
   };
 }
 
+async function renderPrestamos() {
+  const prestamos = await db.prestamos.toArray();
+  let html = `<div class="card">
+      <h2>Préstamos</h2>
+      <form id="form-prestamo">
+        <input name="tin" type="number" step="any" placeholder="TIN %" required />
+        <button class="btn">Guardar</button>
+      </form>
+      <ul>${prestamos.map(p => `<li>${p.tin}%</li>`).join('')}</ul>
+    </div>`;
+  app.innerHTML = html;
+  document.getElementById('form-prestamo').onsubmit = e => {
+    e.preventDefault();
+    const tin = parseFloat(e.target.tin.value);
+    db.prestamos.add({ tin }).then(renderPrestamos);
+  };
+}
+
 function renderTiposCambio() {
   db.tiposCambio.toArray().then(tipos => {
     app.innerHTML = `
@@ -477,6 +502,8 @@ function renderAjustes() {
   const brokers = getBrokers();
   const bancos = getBancos();
   const tema = getTema();
+  const idioma = getIdioma();
+  const privacidad = getPrivacidad();
 
   app.innerHTML = `
     <div class="card">
@@ -504,6 +531,21 @@ function renderAjustes() {
         </select>
         <button id="btn-save-tema" class="btn">Guardar tema</button>
       </section>
+
+      <section>
+        <h3>Idioma</h3>
+        <select id="sel-idioma">
+          <option value="es" ${idioma === 'es' ? 'selected' : ''}>Español</option>
+          <option value="en" ${idioma === 'en' ? 'selected' : ''}>English</option>
+        </select>
+        <button id="btn-save-idioma" class="btn">Guardar idioma</button>
+      </section>
+
+      <section>
+        <h3>Modo privacidad</h3>
+        <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''} /> Ocultar cantidades</label>
+        <button id="btn-save-privacidad" class="btn">Guardar privacidad</button>
+      </section>
     </div>`;
 
   document.getElementById('btn-save-brokers').onclick = () => {
@@ -522,6 +564,18 @@ function renderAjustes() {
     const nuevoTema = document.getElementById('sel-tema').value;
     setTema(nuevoTema);
     alert('Tema guardado. Recarga la página si no se aplica automáticamente.');
+  };
+
+  document.getElementById('btn-save-idioma').onclick = () => {
+    const nuevoIdioma = document.getElementById('sel-idioma').value;
+    setIdioma(nuevoIdioma);
+    alert('Idioma guardado.');
+  };
+
+  document.getElementById('btn-save-privacidad').onclick = () => {
+    const activo = document.getElementById('chk-privacidad').checked;
+    setPrivacidad(activo);
+    alert('Preferencia de privacidad guardada.');
   };
 }
 

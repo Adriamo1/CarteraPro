@@ -8,11 +8,7 @@ const urlsToCache = [
   '/icon192.png',
   '/icon512.png',
   // Añade tus scripts si quieres cachearlos:
-  '/js/app.js',
-  '/js/core.js',
-  '/js/db.js',
-  '/js/settings.js',
-  '/js/dashboard.js',
+  '/js/app.js'
   // Añade widgets y vistas según vayas completando
 ];
 
