@@ -8,6 +8,8 @@
   --color-shadow: #ccd7e6aa;
   --color-text: #2b3e51;
   --color-muted: #7d8ca1;
+  --color-positivo: #2e7d32;
+  --color-negativo: #c62828;
   --radius-xl: 16px;
   --radius-md: 10px;
   --radius-sm: 6px;
@@ -29,6 +31,8 @@
     --color-card: #2c3444;
     --color-text: #f0f4f8;
     --color-muted: #9aa7bb;
+    --color-positivo: #66bb6a;
+    --color-negativo: #ef5350;
     --sidebar-bg: #1a202b;
     --sidebar-txt: #e0e6ee;
   }
@@ -148,6 +152,41 @@ footer {
   text-align: center;
   font-size: 0.88em;
   color: var(--color-muted);
+}
+
+/* ----- KPIs ----- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-lg);
+}
+
+.kpi-card {
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kpi-icon {
+  font-size: 1.8em;
+}
+
+.kpi-value {
+  font-size: 1.4em;
+  font-weight: bold;
+}
+
+.kpi-positivo {
+  color: var(--color-positivo);
+}
+
+.kpi-negativo {
+  color: var(--color-negativo);
 }
 
 /* ---------- Responsive ---------- */

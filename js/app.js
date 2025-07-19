@@ -10,6 +10,13 @@ db.version(1).stores({
 
 const app = document.getElementById("app");
 
+function formatCurrency(num) {
+  return Number(num || 0).toLocaleString('es-ES', {
+    style: 'currency',
+    currency: 'EUR'
+  });
+}
+
 // --- Ajustes de usuario (tema, bancos, brokers...) ---
 const SETTINGS_PREFIX = "carteraPRO_settings_";
 
@@ -72,6 +79,52 @@ const vistas = {
   "#ajustes": renderAjustes
 };
 
+async function calcularKpis() {
+  const [activos, trans, cuentas] = await Promise.all([
+    db.activos.toArray(),
+    db.transacciones.toArray(),
+    db.cuentas.toArray()
+  ]);
+
+  const valorActivos = activos.reduce((s, a) => s + (+a.valorActual || 0), 0);
+  const saldoCuentas = cuentas.reduce((s, c) => s + (+c.saldo || 0), 0);
+  const valorTotal = valorActivos + saldoCuentas;
+
+  const compras = {}, ventas = {};
+  trans.forEach(t => {
+    const id = t.activoId;
+    const importe = (+t.cantidad || 0) * (+t.precio || 0);
+    if ((t.tipo || '').toLowerCase() === 'compra') {
+      compras[id] = compras[id] || { cantidad: 0, coste: 0 };
+      compras[id].cantidad += +t.cantidad || 0;
+      compras[id].coste += importe + (+t.comision || 0);
+    } else if ((t.tipo || '').toLowerCase() === 'venta') {
+      ventas[id] = ventas[id] || { cantidad: 0, ingreso: 0 };
+      ventas[id].cantidad += +t.cantidad || 0;
+      ventas[id].ingreso += importe - (+t.comision || 0);
+    }
+  });
+
+  let realized = 0, costeRestante = 0;
+  activos.forEach(a => {
+    const c = compras[a.id] || { cantidad: 0, coste: 0 };
+    const v = ventas[a.id] || { cantidad: 0, ingreso: 0 };
+    const avg = c.coste / (c.cantidad || 1);
+    realized += v.ingreso - avg * v.cantidad;
+    costeRestante += c.coste - avg * v.cantidad;
+  });
+  const unrealized = valorActivos - costeRestante;
+  const rentTotal = realized + unrealized;
+
+  const valorPorTipo = activos.reduce((acc, a) => {
+    const val = +a.valorActual || 0;
+    acc[a.tipo] = (acc[a.tipo] || 0) + val;
+    return acc;
+  }, {});
+
+  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo };
+}
+
 function navegar() {
   const hash = location.hash || "#dashboard";
   const render = vistas[hash];
@@ -97,23 +150,44 @@ function renderResumen() {
   });
 }
 
-function renderDashboard() {
-  Promise.all([
-    db.activos.toArray(),
-    db.transacciones.toArray(),
-    db.cuentas.toArray()
-  ]).then(([activos, trans, cuentas]) => {
-    const valorTotal = activos.reduce((s, a) => s + (a.valorActual || 0), 0);
-    const saldoTotal = cuentas.reduce((s, c) => s + (c.saldo || 0), 0);
-    app.innerHTML = `
-    <div class="card">
-      <h2>Panel de control</h2>
-      <p class="mini-explica">Consulta de forma rápida el estado global de tus inversiones.</p>
-      <p>💰 Valor total activos: ${valorTotal.toFixed(2)} €</p>
-      <p>🏦 Saldo total cuentas: ${saldoTotal.toFixed(2)} €</p>
-      <p>🔄 Transacciones: ${trans.length}</p>
+async function renderDashboard() {
+  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
+  const porTipoHtml = Object.entries(valorPorTipo)
+    .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
+  app.innerHTML = `
+    <h2>Panel de control</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">💰</div>
+        <div>
+          <div>Valor Total</div>
+          <div class="kpi-value">${formatCurrency(valorTotal)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📈</div>
+        <div>
+          <div>Rentabilidad Total</div>
+          <div class="kpi-value ${rentTotal>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(rentTotal)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💵</div>
+        <div>
+          <div>Realizada</div>
+          <div class="kpi-value ${realized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(realized)}</div>
+          <div>No realizada</div>
+          <div class="kpi-value ${unrealized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(unrealized)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📊</div>
+        <div>
+          <div>Valor por tipo de activo</div>
+          ${porTipoHtml}
+        </div>
+      </div>
     </div>`;
-  });
 }
 
 function renderActivos() {
