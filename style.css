@@ -118,6 +118,13 @@ button:hover, .btn:hover {
   background: var(--color-accent);
 }
 
+.btn-secondary {
+  background: #666;
+}
+.btn-secondary:hover {
+  background: #555;
+}
+
 input, select {
   width: 100%;
   padding: 8px;
@@ -130,6 +137,25 @@ input, select {
 
 ul {
   padding-left: 1.2em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--gap-sm);
+}
+th, td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #ccc;
+  text-align: left;
+}
+th {
+  background: var(--color-bg);
+}
+
+.mini-explica {
+  font-size: 0.85em;
+  color: var(--color-muted);
 }
 
 footer {

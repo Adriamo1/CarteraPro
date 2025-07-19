@@ -1,19 +1,12 @@
 // service-worker.js
 const CACHE_NAME = 'cartera-pro-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
+  './',
+  '/Index.html',
   '/style.css',
-  '/manifest.json',
-  '/icon192.png',
-  '/icon512.png',
-  // Añade tus scripts si quieres cachearlos:
+  '/Manifest.json',
   '/js/app.js',
-  '/js/core.js',
-  '/js/db.js',
-  '/js/settings.js',
-  '/js/dashboard.js',
-  // Añade widgets y vistas según vayas completando
+  '/version.json'
 ];
 
 self.addEventListener('install', function(event) {
@@ -21,6 +14,17 @@ self.addEventListener('install', function(event) {
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
   );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', function(event) {
