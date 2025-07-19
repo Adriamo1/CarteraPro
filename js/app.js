@@ -24,6 +24,11 @@ db.version(4).stores({
 });
 
 const app = document.getElementById("app");
+const state = {
+  accountMovements: [],
+  interestRates: [],
+  settings: { lastExchangeUpdate: null }
+};
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -43,6 +48,9 @@ function processApiQueue() {
     .then(d => resolve(d))
     .catch(() => resolve(null))
     .finally(() => {
+      if (/exchangerate/i.test(url)) {
+        state.settings.lastExchangeUpdate = new Date().toISOString();
+      }
       processApiQueue.running = false;
       processApiQueue();
     });
@@ -220,17 +228,19 @@ async function calcularKpis() {
 async function calcularInteresMes() {
   const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
   if (!cuentas.length) return 0;
-  const [movs, rates] = await Promise.all([
-    db.movimientos.toArray(),
-    db.interestRates.toArray()
-  ]);
-  movs.sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  rates.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const rates = state.interestRates.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
 
   const hoy = new Date();
   const anyo = hoy.getFullYear();
   const mes = hoy.getMonth();
-  const diasMes = new Date(anyo, mes + 1, 0).getDate();
+  const diasMes = hoy.getDate();
   const inicioMes = `${anyo}-${String(mes+1).padStart(2,'0')}-01`;
 
   let total = 0;
@@ -248,6 +258,15 @@ async function calcularInteresMes() {
     }
   }
   return total;
+}
+
+async function totalSavebackPendiente() {
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  return state.accountMovements
+    .filter(m => m.tipo === 'Saveback pendiente')
+    .reduce((s, m) => s + (+m.importe || 0), 0);
 }
 
 function navegar() {
@@ -278,6 +297,7 @@ function renderResumen() {
 async function renderDashboard() {
   const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
   const interesMes = await calcularInteresMes();
+  const savePend = await totalSavebackPendiente();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   app.innerHTML = `
@@ -314,6 +334,13 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="kpi-card">
+        <div class="kpi-icon">💳</div>
+        <div>
+          <div>Saveback pendiente</div>
+          <div class="kpi-value">${formatCurrency(savePend)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
         <div class="kpi-icon">📊</div>
         <div>
           <div>Valor por tipo de activo</div>
@@ -347,7 +374,7 @@ async function renderActivos() {
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
         <button type="button" class="btn" id="importar-activos">Importar CSV/JSON</button>
-        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa</button>
+        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa estilo Value</button>
       </form>`;
 
   if (modo === 'resumen') {
@@ -509,6 +536,7 @@ function renderTiposCambio() {
     app.innerHTML = `
     <div class="card">
       <h2>Tipos de cambio</h2>
+      <div class="mini-explica" id="last-update-tc">Última actualización: ${state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A'}</div>
       <button id="refresh-tc" class="btn">Refrescar tasas</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
@@ -584,6 +612,14 @@ async function analizarEmpresa(ticker) {
     payout: r.summaryDetail?.payoutRatio?.raw ? r.summaryDetail.payoutRatio.raw * 100 : 0,
     crecimientoIngresos5a: r.defaultKeyStatistics?.revenueGrowth?.raw ? r.defaultKeyStatistics.revenueGrowth.raw * 100 : 0
   };
+  d.moat = (d.roe > 15 && d.roic > 10) ? 'Amplio' : 'Reducido';
+  if (d.fcfYield > 0) {
+    d.valorBuffett = +(d.precioActual * (10 / d.fcfYield)).toFixed(2);
+    d.margenSeguridad = +((1 - d.precioActual / d.valorBuffett) * 100).toFixed(2);
+  } else {
+    d.valorBuffett = 0;
+    d.margenSeguridad = 0;
+  }
   d.recomendacion = recomendacionBuffett(d);
   return d;
 }
@@ -614,17 +650,17 @@ function renderAnalisisValue() {
         Descripción: datos.descripcion,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr>
           <td data-label="Campo">${k}</td>
@@ -985,29 +1021,38 @@ async function mostrarModalMovimiento(cuentas) {
     data.cuentaId = parseInt(data.cuentaId);
     data.importe = parseFloat(data.importe);
     const cuenta = await db.cuentas.get(data.cuentaId);
-    await db.movimientos.add({
+    const mov = {
       cuentaId: data.cuentaId,
       fecha: data.fecha,
       importe: data.importe,
       descripcion: data.descripcion || '',
       tipo: data.tipo
-    });
+    };
+    const id = await db.movimientos.add(mov);
+    mov.id = id;
+    state.accountMovements.push(mov);
     await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
 
     if (data.tipo === 'Gasto Tarjeta') {
       const porcentaje = getSavebackRate();
       const importeSave = Math.abs(data.importe) * (porcentaje / 100);
-      await db.movimientos.add({
+      const movSave = {
         cuentaId: data.cuentaId,
         fecha: data.fecha,
         importe: importeSave,
         descripcion: 'Saveback pendiente',
-        tipo: 'saveback'
-      });
+        tipo: 'Saveback pendiente'
+      };
+      const id2 = await db.movimientos.add(movSave);
+      movSave.id = id2;
+      state.accountMovements.push(movSave);
     }
 
     modal.classList.add('hidden');
     renderCuentas();
+    if (location.hash === '#dashboard') {
+      renderDashboard();
+    }
   };
 }
 
@@ -1030,9 +1075,11 @@ function crearModalTransaccion() {
         <input type="number" step="any" name="cantidad" placeholder="Cantidad" required />
         <input type="number" step="any" name="precio" id="inp-precio" placeholder="Precio" required />
         <button type="button" class="btn" id="btn-precio">📈 Obtener precio actual</button>
+        <div id="currency-info" class="mini-explica"></div>
         <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
         <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
         <datalist id="lista-brokers"></datalist>
+        <div id="rate-info" class="mini-explica"></div>
         <div id="total-eur" class="mini-explica"></div>
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="cancel-trans">Cancelar</button>
@@ -1055,7 +1102,10 @@ async function mostrarModalTransaccion(activos) {
   const cantEl = modal.querySelector('[name="cantidad"]');
   const comEl = document.getElementById('inp-comision');
   const totalEl = document.getElementById('total-eur');
+  const curEl = document.getElementById('currency-info');
+  const rateEl = document.getElementById('rate-info');
   const btnPrecio = document.getElementById('btn-precio');
+  let currentTc = 1;
 
   async function actualizarPrecio() {
     const opt = lista.selectedOptions[0];
@@ -1066,32 +1116,25 @@ async function mostrarModalTransaccion(activos) {
     const info = await obtenerPrecioYMoneda(ticker, tipo, moneda, parseFloat(precioEl.value));
     precioEl.value = info.precio;
     precioEl.dataset.moneda = info.moneda;
-    const tc = await obtenerTipoCambio(info.moneda);
-    calcularTotal(tc);
+    curEl.textContent = `Divisa: ${info.moneda}`;
+    currentTc = await obtenerTipoCambio(info.moneda);
+    rateEl.textContent = `TC aplicado: ${currentTc}`;
+    calcularTotal(currentTc);
   }
 
   function calcularTotal(tc) {
     const cant = parseFloat(cantEl.value) || 0;
     const precio = parseFloat(precioEl.value) || 0;
     const com = parseFloat(comEl.value) || 0;
-    const total = cant * precio / (tc || 1) + com;
+    const total = cant * precio * (tc || 1) + com;
     totalEl.textContent = `Total EUR aprox.: ${formatCurrency(total)}`;
   }
 
   lista.onchange = actualizarPrecio;
   btnPrecio.onclick = actualizarPrecio;
-  cantEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
-  precioEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
-  comEl.oninput = async () => {
-    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
-    calcularTotal(tc);
-  };
+  cantEl.oninput = () => calcularTotal(currentTc);
+  precioEl.oninput = () => calcularTotal(currentTc);
+  comEl.oninput = () => calcularTotal(currentTc);
 
   actualizarPrecio();
 
@@ -1156,17 +1199,17 @@ function mostrarModalAnalisis() {
         Sector: datos.sector,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr><td data-label="Campo">${k}</td><td data-label="Valor">${v}</td></tr>`).join('');
       res.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
@@ -1184,7 +1227,7 @@ function mostrarModalAnalisis() {
   };
 }
 
-// ----- Modal Importar Activos -----
+// ----- Modal Importación de datos -----
 function crearModalImportar() {
   if (document.getElementById('import-modal')) return;
   const div = document.createElement('div');
@@ -1192,12 +1235,12 @@ function crearModalImportar() {
   div.className = 'modal hidden';
   div.innerHTML = `
     <div class="modal-content">
-      <h3>Importar Activos</h3>
+      <h3>Importar Datos</h3>
       <input type="file" id="file-import" accept=".csv,.json" />
       <div id="import-res" class="mini-explica"></div>
       <div id="import-list"></div>
-      <button id="confirm-import" class="btn">Importar</button>
-      <button type="button" class="btn" id="cancel-import">Cerrar</button>
+      <button id="confirm-import" class="btn">Guardar</button>
+      <button type="button" class="btn" id="cancel-import">Cancelar</button>
     </div>`;
   document.body.appendChild(div);
 }
@@ -1208,59 +1251,134 @@ function mostrarModalImportar() {
   const inp = document.getElementById('file-import');
   const res = document.getElementById('import-res');
   const list = document.getElementById('import-list');
-  let paraGuardar = [];
+  let nuevosActivos = [];
+  let nuevasTrans = [];
   modal.classList.remove('hidden');
 
   inp.onchange = async () => {
+    res.textContent = '';
+    list.innerHTML = '';
+    nuevosActivos = [];
+    nuevasTrans = [];
     const file = inp.files[0];
     if (!file) return;
     const text = await file.text();
-    let datos = [];
+    let data;
     try {
       if (file.name.toLowerCase().endsWith('.json')) {
-        datos = JSON.parse(text);
+        data = JSON.parse(text);
       } else {
-        datos = parseCSV(text);
+        data = parseCSV(text);
       }
     } catch {
       res.textContent = 'Archivo no válido';
       return;
     }
-    const existentes = await db.activos.toArray();
-    const tickerSet = new Set(existentes.map(a => (a.ticker || '').toUpperCase()));
-    const nuevos = [];
-    const errores = [];
-    datos.forEach((row,i) => {
+
+    let activosRaw = [], transRaw = [];
+    if (Array.isArray(data)) {
+      if (data[0] && (data[0].fecha || data[0].tipo === 'compra' || data[0].tipo === 'venta')) {
+        transRaw = data;
+      } else {
+        activosRaw = data;
+      }
+    } else if (data && typeof data === 'object') {
+      activosRaw = Array.isArray(data.activos) ? data.activos : activosRaw;
+      transRaw = Array.isArray(data.transacciones) ? data.transacciones : transRaw;
+    }
+
+  const existentes = await db.activos.toArray();
+  const mapaTickerId = {};
+  existentes.forEach(a => mapaTickerId[(a.ticker || '').toUpperCase()] = a.id);
+  const tickersUsados = new Set(Object.keys(mapaTickerId));
+  const avisos = [];
+  const transKeySet = new Set();
+
+    activosRaw.forEach((row,i) => {
       const nombre = (row.nombre || '').trim();
-      const ticker = (row.ticker || '').trim();
-      if (!nombre || !ticker) {
-        errores.push(`Línea ${i+2}: campos vacíos`);
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      if (!nombre || !tkr) {
+        avisos.push(`Línea ${i+1} de activos: campos incompletos`);
         return;
       }
-      if (tickerSet.has(ticker.toUpperCase())) {
-        errores.push(`Línea ${i+2}: duplicado ${ticker}`);
+      if (tickersUsados.has(tkr)) {
+        avisos.push(`Línea ${i+1} de activos: duplicado ${tkr}`);
         return;
       }
-      tickerSet.add(ticker.toUpperCase());
-      nuevos.push({
+      tickersUsados.add(tkr);
+      nuevosActivos.push({
         nombre,
-        ticker,
+        ticker: tkr,
         tipo: row.tipo || '',
         moneda: row.moneda || 'EUR',
         sector: row.sector || 'Desconocido'
       });
     });
-    paraGuardar = nuevos;
-    list.innerHTML = nuevos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
-    if (errores.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${errores.join('<br>')}</div>`;
-    res.textContent = `${nuevos.length} nuevos activos. ${errores.length} errores.`;
+
+    transRaw.forEach((row,i) => {
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      const id = parseInt(row.activoId);
+      if (!tkr && !id) {
+        avisos.push(`Línea ${i+1} de transacciones: falta activo`);
+        return;
+      }
+      if (!row.tipo || !row.fecha) {
+        avisos.push(`Línea ${i+1} de transacciones: campos incompletos`);
+        return;
+      }
+      const clave = `${id||tkr}-${row.tipo}-${row.fecha}-${row.cantidad}`;
+      if (transKeySet.has(clave)) {
+        avisos.push(`Línea ${i+1} de transacciones: duplicada`);
+        return;
+      }
+      transKeySet.add(clave);
+      nuevasTrans.push({
+        ticker: tkr,
+        activoId: id || null,
+        tipo: row.tipo,
+        fecha: row.fecha,
+        cantidad: parseFloat(row.cantidad || 0),
+        precio: parseFloat(row.precio || 0),
+        comision: parseFloat(row.comision || 0),
+        broker: row.broker || ''
+      });
+    });
+
+    const activosPreview = nuevosActivos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    const transPreview = nuevasTrans.slice(0,5).map(t => `<div>${t.fecha} ${t.tipo} ${t.cantidad} ${t.ticker||('#'+t.activoId)}</div>`).join('');
+    list.innerHTML = activosPreview + (transPreview ? `<h4>Transacciones</h4>${transPreview}` : '');
+    if (avisos.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${avisos.join('<br>')}</div>`;
+    res.textContent = `${nuevosActivos.length} nuevos activos - ${nuevasTrans.length} transacciones`;
   };
 
   modal.querySelector('#confirm-import').onclick = async () => {
-    if (!paraGuardar.length) { modal.classList.add('hidden'); return; }
-    await db.activos.bulkAdd(paraGuardar);
-    modal.classList.add('hidden');
-    renderActivos();
+    try {
+      const tickerId = {};
+      for (const act of nuevosActivos) {
+        const id = await db.activos.add(act);
+        tickerId[act.ticker.toUpperCase()] = id;
+      }
+      for (const t of nuevasTrans) {
+        let actId = t.activoId;
+        if (!actId && t.ticker) {
+          actId = tickerId[t.ticker.toUpperCase()] || (await db.activos.where('ticker').equalsIgnoreCase(t.ticker).first())?.id;
+        }
+        if (!actId) continue;
+        await db.transacciones.add({
+          activoId: actId,
+          tipo: t.tipo,
+          fecha: t.fecha,
+          cantidad: t.cantidad,
+          precio: t.precio,
+          comision: t.comision,
+          broker: t.broker
+        });
+      }
+      modal.classList.add('hidden');
+      renderActivos();
+    } catch (e) {
+      res.textContent = 'Error al importar: ' + e.message;
+    }
   };
 
   modal.querySelector('#cancel-import').onclick = () => {
@@ -1288,6 +1406,8 @@ async function obtenerPrecioYMoneda(ticker, tipo, moneda, manual) {
 
 async function obtenerTipoCambio(moneda) {
   if (moneda === 'EUR') return 1;
+  const rates = getUserSetting('exchangeRates') || {};
+  if (rates[moneda]) return parseFloat(rates[moneda]);
   const reg = await db.tiposCambio.where('moneda').equals(moneda).last();
   if (reg) return parseFloat(reg.tasa || 1);
   return getTipoCambio();
@@ -1295,6 +1415,8 @@ async function obtenerTipoCambio(moneda) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   await initAjustes();
+  state.accountMovements = await db.movimientos.toArray();
+  state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
