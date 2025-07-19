@@ -174,6 +174,7 @@ const vistas = {
   "#prestamos": renderPrestamos,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
+  "#info": renderInfo,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
@@ -831,6 +832,23 @@ function renderAjustes() {
     setPrivacidad(activo);
     alert('Preferencia de privacidad guardada.');
   };
+}
+
+function renderInfo() {
+  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
+  fetch('version.json', {cache:'no-store'})
+    .then(r => r.json())
+    .then(d => {
+      const fecha = d.date || '';
+      document.getElementById('info-cont').innerHTML = `
+        <p>Versión: ${d.version}</p>
+        <p>Fecha: ${fecha}</p>
+        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+    })
+    .catch(()=>{
+      document.getElementById('info-cont').textContent = 'No disponible';
+    });
 }
 
 // --------- Gráficos Dashboard ---------
