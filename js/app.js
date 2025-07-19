@@ -24,7 +24,11 @@ db.version(4).stores({
 });
 
 const app = document.getElementById("app");
-const state = { accountMovements: [], interestRates: [] };
+const state = {
+  accountMovements: [],
+  interestRates: [],
+  settings: { lastExchangeUpdate: null }
+};
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -44,6 +48,9 @@ function processApiQueue() {
     .then(d => resolve(d))
     .catch(() => resolve(null))
     .finally(() => {
+      if (/exchangerate/i.test(url)) {
+        state.settings.lastExchangeUpdate = new Date().toISOString();
+      }
       processApiQueue.running = false;
       processApiQueue();
     });
@@ -167,6 +174,7 @@ const vistas = {
   "#prestamos": renderPrestamos,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
+  "#info": renderInfo,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
@@ -367,7 +375,7 @@ async function renderActivos() {
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
         <button type="button" class="btn" id="importar-activos">Importar CSV/JSON</button>
-        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa</button>
+        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa estilo Value</button>
       </form>`;
 
   if (modo === 'resumen') {
@@ -529,6 +537,7 @@ function renderTiposCambio() {
     app.innerHTML = `
     <div class="card">
       <h2>Tipos de cambio</h2>
+      <div class="mini-explica" id="last-update-tc">Última actualización: ${state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A'}</div>
       <button id="refresh-tc" class="btn">Refrescar tasas</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
@@ -604,6 +613,14 @@ async function analizarEmpresa(ticker) {
     payout: r.summaryDetail?.payoutRatio?.raw ? r.summaryDetail.payoutRatio.raw * 100 : 0,
     crecimientoIngresos5a: r.defaultKeyStatistics?.revenueGrowth?.raw ? r.defaultKeyStatistics.revenueGrowth.raw * 100 : 0
   };
+  d.moat = (d.roe > 15 && d.roic > 10) ? 'Amplio' : 'Reducido';
+  if (d.fcfYield > 0) {
+    d.valorBuffett = +(d.precioActual * (10 / d.fcfYield)).toFixed(2);
+    d.margenSeguridad = +((1 - d.precioActual / d.valorBuffett) * 100).toFixed(2);
+  } else {
+    d.valorBuffett = 0;
+    d.margenSeguridad = 0;
+  }
   d.recomendacion = recomendacionBuffett(d);
   return d;
 }
@@ -634,17 +651,17 @@ function renderAnalisisValue() {
         Descripción: datos.descripcion,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr>
           <td data-label="Campo">${k}</td>
@@ -815,6 +832,23 @@ function renderAjustes() {
     setPrivacidad(activo);
     alert('Preferencia de privacidad guardada.');
   };
+}
+
+function renderInfo() {
+  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
+  fetch('version.json', {cache:'no-store'})
+    .then(r => r.json())
+    .then(d => {
+      const fecha = d.date || '';
+      document.getElementById('info-cont').innerHTML = `
+        <p>Versión: ${d.version}</p>
+        <p>Fecha: ${fecha}</p>
+        <p>Creado por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a></p>
+        <p><a href="https://github.com/adrianmonge/CarteraPro" target="_blank" rel="noopener">Repositorio del proyecto</a></p>`;
+    })
+    .catch(()=>{
+      document.getElementById('info-cont').textContent = 'No disponible';
+    });
 }
 
 // --------- Gráficos Dashboard ---------
@@ -1183,17 +1217,17 @@ function mostrarModalAnalisis() {
         Sector: datos.sector,
         'Precio actual': datos.precioActual,
         PER: datos.per,
-        PEG: datos.peg,
         'P/B': datos.pb,
         ROE: datos.roe,
         ROIC: datos.roic,
-        'Margen Neto': datos.margenNeto,
         FCF: datos.fcf,
         'FCF Yield': datos.fcfYield,
-        'Deuda / Patrimonio': datos.deudaPatrimonio,
-        'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        'Crecimiento 5 años': datos.crecimientoIngresos5a,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        Moat: datos.moat,
+        'Valoración Buffett': datos.valorBuffett,
+        'Margen de seguridad (%)': datos.margenSeguridad,
         Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr><td data-label="Campo">${k}</td><td data-label="Valor">${v}</td></tr>`).join('');
       res.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
@@ -1211,7 +1245,7 @@ function mostrarModalAnalisis() {
   };
 }
 
-// ----- Modal Importar Activos -----
+// ----- Modal Importación de datos -----
 function crearModalImportar() {
   if (document.getElementById('import-modal')) return;
   const div = document.createElement('div');
@@ -1219,12 +1253,12 @@ function crearModalImportar() {
   div.className = 'modal hidden';
   div.innerHTML = `
     <div class="modal-content">
-      <h3>Importar Activos</h3>
+      <h3>Importar Datos</h3>
       <input type="file" id="file-import" accept=".csv,.json" />
       <div id="import-res" class="mini-explica"></div>
       <div id="import-list"></div>
-      <button id="confirm-import" class="btn">Importar</button>
-      <button type="button" class="btn" id="cancel-import">Cerrar</button>
+      <button id="confirm-import" class="btn">Guardar</button>
+      <button type="button" class="btn" id="cancel-import">Cancelar</button>
     </div>`;
   document.body.appendChild(div);
 }
@@ -1235,59 +1269,134 @@ function mostrarModalImportar() {
   const inp = document.getElementById('file-import');
   const res = document.getElementById('import-res');
   const list = document.getElementById('import-list');
-  let paraGuardar = [];
+  let nuevosActivos = [];
+  let nuevasTrans = [];
   modal.classList.remove('hidden');
 
   inp.onchange = async () => {
+    res.textContent = '';
+    list.innerHTML = '';
+    nuevosActivos = [];
+    nuevasTrans = [];
     const file = inp.files[0];
     if (!file) return;
     const text = await file.text();
-    let datos = [];
+    let data;
     try {
       if (file.name.toLowerCase().endsWith('.json')) {
-        datos = JSON.parse(text);
+        data = JSON.parse(text);
       } else {
-        datos = parseCSV(text);
+        data = parseCSV(text);
       }
     } catch {
       res.textContent = 'Archivo no válido';
       return;
     }
-    const existentes = await db.activos.toArray();
-    const tickerSet = new Set(existentes.map(a => (a.ticker || '').toUpperCase()));
-    const nuevos = [];
-    const errores = [];
-    datos.forEach((row,i) => {
+
+    let activosRaw = [], transRaw = [];
+    if (Array.isArray(data)) {
+      if (data[0] && (data[0].fecha || data[0].tipo === 'compra' || data[0].tipo === 'venta')) {
+        transRaw = data;
+      } else {
+        activosRaw = data;
+      }
+    } else if (data && typeof data === 'object') {
+      activosRaw = Array.isArray(data.activos) ? data.activos : activosRaw;
+      transRaw = Array.isArray(data.transacciones) ? data.transacciones : transRaw;
+    }
+
+  const existentes = await db.activos.toArray();
+  const mapaTickerId = {};
+  existentes.forEach(a => mapaTickerId[(a.ticker || '').toUpperCase()] = a.id);
+  const tickersUsados = new Set(Object.keys(mapaTickerId));
+  const avisos = [];
+  const transKeySet = new Set();
+
+    activosRaw.forEach((row,i) => {
       const nombre = (row.nombre || '').trim();
-      const ticker = (row.ticker || '').trim();
-      if (!nombre || !ticker) {
-        errores.push(`Línea ${i+2}: campos vacíos`);
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      if (!nombre || !tkr) {
+        avisos.push(`Línea ${i+1} de activos: campos incompletos`);
         return;
       }
-      if (tickerSet.has(ticker.toUpperCase())) {
-        errores.push(`Línea ${i+2}: duplicado ${ticker}`);
+      if (tickersUsados.has(tkr)) {
+        avisos.push(`Línea ${i+1} de activos: duplicado ${tkr}`);
         return;
       }
-      tickerSet.add(ticker.toUpperCase());
-      nuevos.push({
+      tickersUsados.add(tkr);
+      nuevosActivos.push({
         nombre,
-        ticker,
+        ticker: tkr,
         tipo: row.tipo || '',
         moneda: row.moneda || 'EUR',
         sector: row.sector || 'Desconocido'
       });
     });
-    paraGuardar = nuevos;
-    list.innerHTML = nuevos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
-    if (errores.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${errores.join('<br>')}</div>`;
-    res.textContent = `${nuevos.length} nuevos activos. ${errores.length} errores.`;
+
+    transRaw.forEach((row,i) => {
+      const tkr = (row.ticker || '').trim().toUpperCase();
+      const id = parseInt(row.activoId);
+      if (!tkr && !id) {
+        avisos.push(`Línea ${i+1} de transacciones: falta activo`);
+        return;
+      }
+      if (!row.tipo || !row.fecha) {
+        avisos.push(`Línea ${i+1} de transacciones: campos incompletos`);
+        return;
+      }
+      const clave = `${id||tkr}-${row.tipo}-${row.fecha}-${row.cantidad}`;
+      if (transKeySet.has(clave)) {
+        avisos.push(`Línea ${i+1} de transacciones: duplicada`);
+        return;
+      }
+      transKeySet.add(clave);
+      nuevasTrans.push({
+        ticker: tkr,
+        activoId: id || null,
+        tipo: row.tipo,
+        fecha: row.fecha,
+        cantidad: parseFloat(row.cantidad || 0),
+        precio: parseFloat(row.precio || 0),
+        comision: parseFloat(row.comision || 0),
+        broker: row.broker || ''
+      });
+    });
+
+    const activosPreview = nuevosActivos.map(n => `<div>${n.nombre} (${n.ticker})</div>`).join('');
+    const transPreview = nuevasTrans.slice(0,5).map(t => `<div>${t.fecha} ${t.tipo} ${t.cantidad} ${t.ticker||('#'+t.activoId)}</div>`).join('');
+    list.innerHTML = activosPreview + (transPreview ? `<h4>Transacciones</h4>${transPreview}` : '');
+    if (avisos.length) list.innerHTML += `<div class="mini-explica kpi-negativo">${avisos.join('<br>')}</div>`;
+    res.textContent = `${nuevosActivos.length} nuevos activos - ${nuevasTrans.length} transacciones`;
   };
 
   modal.querySelector('#confirm-import').onclick = async () => {
-    if (!paraGuardar.length) { modal.classList.add('hidden'); return; }
-    await db.activos.bulkAdd(paraGuardar);
-    modal.classList.add('hidden');
-    renderActivos();
+    try {
+      const tickerId = {};
+      for (const act of nuevosActivos) {
+        const id = await db.activos.add(act);
+        tickerId[act.ticker.toUpperCase()] = id;
+      }
+      for (const t of nuevasTrans) {
+        let actId = t.activoId;
+        if (!actId && t.ticker) {
+          actId = tickerId[t.ticker.toUpperCase()] || (await db.activos.where('ticker').equalsIgnoreCase(t.ticker).first())?.id;
+        }
+        if (!actId) continue;
+        await db.transacciones.add({
+          activoId: actId,
+          tipo: t.tipo,
+          fecha: t.fecha,
+          cantidad: t.cantidad,
+          precio: t.precio,
+          comision: t.comision,
+          broker: t.broker
+        });
+      }
+      modal.classList.add('hidden');
+      renderActivos();
+    } catch (e) {
+      res.textContent = 'Error al importar: ' + e.message;
+    }
   };
 
   modal.querySelector('#cancel-import').onclick = () => {
