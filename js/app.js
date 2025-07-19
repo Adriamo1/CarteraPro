@@ -8,7 +8,94 @@ db.version(1).stores({
   ajustes: "clave,valor"
 });
 
+// Versión 2: movimientos de cuentas
+db.version(2).stores({
+  movimientos: "++id,cuentaId,fecha,importe,descripcion"
+});
+
+// Versión 3: tabla de préstamos (TIN de cuentas remuneradas o hipotecas)
+db.version(3).stores({
+  prestamos: "++id,tin"
+});
+
 const app = document.getElementById("app");
+
+function formatCurrency(num) {
+  if (getPrivacidad()) return '•••';
+  return Number(num || 0).toLocaleString('es-ES', {
+    style: 'currency',
+    currency: 'EUR'
+  });
+}
+
+// --- Ajustes de usuario (tema, bancos, brokers...) ---
+const ajustesCache = {};
+
+async function initAjustes() {
+  const all = await db.ajustes.toArray();
+  for (const a of all) {
+    try {
+      ajustesCache[a.clave] = JSON.parse(a.valor);
+    } catch {
+      ajustesCache[a.clave] = a.valor;
+    }
+  }
+}
+
+function saveUserSetting(key, value) {
+  ajustesCache[key] = value;
+  db.ajustes.put({ clave: key, valor: JSON.stringify(value) });
+}
+
+function getUserSetting(key) {
+  return ajustesCache[key] ?? null;
+}
+
+function getBrokers() {
+  return getUserSetting("brokers") || [
+    "Trade Republic", "Revolut", "Binance", "DEGIRO",
+    "MyInvestor", "Interactive Brokers"
+  ];
+}
+function setBrokers(list) { saveUserSetting("brokers", list); }
+
+function getBancos() {
+  return getUserSetting("bancos") || [
+    "BBVA", "CaixaBank", "Santander", "ING",
+    "Openbank", "EVO", "Revolut"
+  ];
+}
+function setBancos(list) { saveUserSetting("bancos", list); }
+
+function setTema(tema) {
+  saveUserSetting("tema", tema);
+  document.body.setAttribute("data-theme", tema);
+}
+function getTema() {
+  return getUserSetting("tema") || "auto";
+}
+
+function setPrivacidad(val) {
+  saveUserSetting("privacidad", !!val);
+}
+function getPrivacidad() {
+  return getUserSetting("privacidad") === true;
+}
+
+function setIdioma(idioma) {
+  saveUserSetting("idioma", idioma);
+}
+function getIdioma() {
+  return getUserSetting("idioma") || "es";
+}
+
+function setVista(seccion, modo) {
+  saveUserSetting("vista_" + seccion, modo);
+}
+
+function getVista(seccion) {
+  return getUserSetting("vista_" + seccion) || "resumen";
+}
 
 const vistas = {
   "#inicio": renderResumen,
@@ -16,11 +103,58 @@ const vistas = {
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
   "#cuentas": renderCuentas,
+  "#prestamos": renderPrestamos,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes
 };
+
+async function calcularKpis() {
+  const [activos, trans, cuentas] = await Promise.all([
+    db.activos.toArray(),
+    db.transacciones.toArray(),
+    db.cuentas.toArray()
+  ]);
+
+  const valorActivos = activos.reduce((s, a) => s + (+a.valorActual || 0), 0);
+  const saldoCuentas = cuentas.reduce((s, c) => s + (+c.saldo || 0), 0);
+  const valorTotal = valorActivos + saldoCuentas;
+
+  const compras = {}, ventas = {};
+  trans.forEach(t => {
+    const id = t.activoId;
+    const importe = (+t.cantidad || 0) * (+t.precio || 0);
+    if ((t.tipo || '').toLowerCase() === 'compra') {
+      compras[id] = compras[id] || { cantidad: 0, coste: 0 };
+      compras[id].cantidad += +t.cantidad || 0;
+      compras[id].coste += importe + (+t.comision || 0);
+    } else if ((t.tipo || '').toLowerCase() === 'venta') {
+      ventas[id] = ventas[id] || { cantidad: 0, ingreso: 0 };
+      ventas[id].cantidad += +t.cantidad || 0;
+      ventas[id].ingreso += importe - (+t.comision || 0);
+    }
+  });
+
+  let realized = 0, costeRestante = 0;
+  activos.forEach(a => {
+    const c = compras[a.id] || { cantidad: 0, coste: 0 };
+    const v = ventas[a.id] || { cantidad: 0, ingreso: 0 };
+    const avg = c.coste / (c.cantidad || 1);
+    realized += v.ingreso - avg * v.cantidad;
+    costeRestante += c.coste - avg * v.cantidad;
+  });
+  const unrealized = valorActivos - costeRestante;
+  const rentTotal = realized + unrealized;
+
+  const valorPorTipo = activos.reduce((acc, a) => {
+    const val = +a.valorActual || 0;
+    acc[a.tipo] = (acc[a.tipo] || 0) + val;
+    return acc;
+  }, {});
+
+  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo };
+}
 
 function navegar() {
   const hash = location.hash || "#dashboard";
@@ -47,32 +181,62 @@ function renderResumen() {
   });
 }
 
-function renderDashboard() {
-  Promise.all([
-    db.activos.toArray(),
-    db.transacciones.toArray(),
-    db.cuentas.toArray()
-  ]).then(([activos, trans, cuentas]) => {
-    const valorTotal = activos.reduce((s, a) => s + (a.valorActual || 0), 0);
-    const saldoTotal = cuentas.reduce((s, c) => s + (c.saldo || 0), 0);
-    app.innerHTML = `
-    <div class="card">
-      <h2>Panel de control</h2>
-      <p class="mini-explica">Consulta de forma rápida el estado global de tus inversiones.</p>
-      <p>💰 Valor total activos: ${valorTotal.toFixed(2)} €</p>
-      <p>🏦 Saldo total cuentas: ${saldoTotal.toFixed(2)} €</p>
-      <p>🔄 Transacciones: ${trans.length}</p>
-    </div>`;
-  });
+async function renderDashboard() {
+  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
+  const porTipoHtml = Object.entries(valorPorTipo)
+    .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
+  app.innerHTML = `
+    <h2>Panel de control</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">💰</div>
+        <div>
+          <div>Valor Total</div>
+          <div class="kpi-value">${formatCurrency(valorTotal)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📈</div>
+        <div>
+          <div>Rentabilidad Total</div>
+          <div class="kpi-value ${rentTotal>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(rentTotal)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💵</div>
+        <div>
+          <div>Realizada</div>
+          <div class="kpi-value ${realized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(realized)}</div>
+          <div>No realizada</div>
+          <div class="kpi-value ${unrealized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(unrealized)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📊</div>
+        <div>
+          <div>Valor por tipo de activo</div>
+          ${porTipoHtml}
+        </div>
+      </div>
+    </div>
+    <div class="card"><h3>P&L por activo</h3><canvas id="grafico-pnl" height="160"></canvas></div>
+    <div class="card"><h3>Saveback y TIN</h3><canvas id="grafico-saveback" height="160"></canvas></div>
+    <div class="card"><h3>Asignación actual vs objetivo</h3><canvas id="grafico-asignacion" height="160"></canvas></div>
+    <div class="card"><h3>Distribución por divisa</h3><canvas id="grafico-divisa" height="160"></canvas></div>
+    <div class="card"><h3>Distribución por sector</h3><canvas id="grafico-sector" height="160"></canvas></div>
+    `;
+
+  renderGraficosDashboard();
 }
 
-function renderActivos() {
-   db.activos.toArray().then(activos => {
-    const total = activos.length;
-    app.innerHTML = `
-    <div class="card">
+async function renderActivos() {
+  const activos = await db.activos.toArray();
+  const total = activos.length;
+  const modo = getVista('activos');
+  let html = `<div class="card">
       <h2>Activos</h2>
       <p class="mini-explica">Gestiona aquí los valores y productos en los que inviertes. Total registrados: ${total}.</p>
+      <button id="toggle-activos" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <form id="form-activo">
         <input name="nombre" placeholder="Nombre" required />
         <input name="ticker" placeholder="Ticker" required />
@@ -80,24 +244,55 @@ function renderActivos() {
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
-      </form>
-      <ul>
-        ${activos.map(a => `<li>${a.nombre} (${a.ticker})</li>`).join("")}
-      </ul>
-    </div>`;
+      </form>`;
 
-    document.getElementById("form-activo").onsubmit = e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd.entries());
-      db.activos.add(data).then(renderActivos);
-    };
+  if (modo === 'resumen') {
+      html += `<ul>${activos.map(a => `<li>${a.nombre} (${a.ticker})</li>`).join('')}</ul>`;
+  } else {
+      for (const a of activos) {
+        const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
+        const filas = trans.map(t => `<tr>
+            <td data-label="Fecha">${t.fecha}</td>
+            <td data-label="Tipo" class="col-ocultar">${t.tipo}</td>
+            <td data-label="Cant.">${t.cantidad}</td>
+            <td data-label="Precio" class="col-ocultar">${t.precio}</td>
+          </tr>`).join('');
+        html += `<section class="detalle">
+          <h3>${a.nombre}</h3>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filas}</tbody></table>
+          <canvas id="graf-act-${a.id}" height="120"></canvas>
+        </section>`;
+      }
+  }
+  html += '</div>';
+  app.innerHTML = html;
 
-    document.getElementById("exportar-activos").onclick = async () => {
-      const data = await db.activos.toArray();
-      exportarCSV(data, "activos.csv");
-    };
-  });
+  document.getElementById('toggle-activos').onclick = () => {
+    setVista('activos', modo === 'detalle' ? 'resumen' : 'detalle');
+    renderActivos();
+  };
+
+  document.getElementById("form-activo").onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    db.activos.add(data).then(renderActivos);
+  };
+
+  document.getElementById("exportar-activos").onclick = async () => {
+    const data = await db.activos.toArray();
+    exportarCSV(data, "activos.csv");
+  };
+
+  if (modo === 'detalle') {
+    for (const a of activos) {
+      const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
+      const ctx = document.getElementById(`graf-act-${a.id}`).getContext('2d');
+      const labels = trans.map(t => t.fecha);
+      const datos = trans.map(t => (+t.cantidad || 0) * (+t.precio || 0) * (t.tipo.toLowerCase() === 'compra' ? -1 : 1));
+      new Chart(ctx, {type:'bar', data:{labels,datasets:[{data:datos,backgroundColor:'#70c1b3'}]}, options:{plugins:{legend:{display:false}}, indexAxis:'y'}});
+    }
+  }
 }
 
 function renderTransacciones() {
@@ -121,31 +316,70 @@ function renderTransacciones() {
   });
 }
 
-function renderCuentas() {
-  db.cuentas.toArray().then(cuentas => {
-    app.innerHTML = `
-    <div class="card">
+async function renderCuentas() {
+  const cuentas = await db.cuentas.toArray();
+  const modo = getVista('cuentas');
+  let html = `<div class="card">
       <h2>Cuentas</h2>
+      <button id="toggle-cuentas" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <form id="form-cuenta">
         <input name="nombre" placeholder="Nombre" required />
         <input name="banco" placeholder="Banco" required />
         <input name="tipo" placeholder="Tipo" value="corriente" required />
         <input name="saldo" placeholder="Saldo" type="number" step="any" value="0" required />
         <button class="btn">Guardar</button>
-      </form>
-      <ul>
-        ${cuentas.map(c => `<li>${c.nombre} (${c.banco}) - ${c.saldo}€</li>`).join("")}
-      </ul>
-    </div>`;
+      </form>`;
+  if (modo === 'resumen') {
+      html += `<ul>${cuentas.map(c => `<li>${c.nombre} (${c.banco}) - ${c.saldo}€</li>`).join('')}</ul>`;
+  } else {
+      for (const c of cuentas) {
+        const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
+        const filas = movs.map(m => `<tr>
+            <td data-label="Fecha">${m.fecha}</td>
+            <td data-label="Importe">${formatCurrency(m.importe)}</td>
+            <td data-label="Concepto" class="col-ocultar">${m.descripcion||''}</td>
+          </tr>`).join('');
+        const interes = (c.saldo || 0) * 0.01;
+        html += `<section class="detalle">
+          <h3>${c.nombre}</h3>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
+          <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
+        </section>`;
+      }
+  }
+  html += '</div>';
+  app.innerHTML = html;
 
-    document.getElementById('form-cuenta').onsubmit = e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd.entries());
-      data.saldo = parseFloat(data.saldo);
-      db.cuentas.add(data).then(renderCuentas);
-    };
-  });
+  document.getElementById('toggle-cuentas').onclick = () => {
+    setVista('cuentas', modo === 'detalle' ? 'resumen' : 'detalle');
+    renderCuentas();
+  };
+
+  document.getElementById('form-cuenta').onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    data.saldo = parseFloat(data.saldo);
+    db.cuentas.add(data).then(renderCuentas);
+  };
+}
+
+async function renderPrestamos() {
+  const prestamos = await db.prestamos.toArray();
+  let html = `<div class="card">
+      <h2>Préstamos</h2>
+      <form id="form-prestamo">
+        <input name="tin" type="number" step="any" placeholder="TIN %" required />
+        <button class="btn">Guardar</button>
+      </form>
+      <ul>${prestamos.map(p => `<li>${p.tin}%</li>`).join('')}</ul>
+    </div>`;
+  app.innerHTML = html;
+  document.getElementById('form-prestamo').onsubmit = e => {
+    e.preventDefault();
+    const tin = parseFloat(e.target.tin.value);
+    db.prestamos.add({ tin }).then(renderPrestamos);
+  };
 }
 
 function renderTiposCambio() {
@@ -239,8 +473,11 @@ function renderAnalisisValue() {
         'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
         'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a
-      }).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-      cont.innerHTML = `<table class="tabla-analisis"><tbody>${filas}</tbody></table>
+      }).map(([k,v])=>`<tr>
+          <td data-label="Campo">${k}</td>
+          <td data-label="Valor">${v}</td>
+        </tr>`).join('');
+      cont.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
         <button id="exp-analisis" class="btn">Exportar CSV</button>
         <button id="copiar-md" class="btn">Copiar Markdown</button>`;
       document.getElementById('exp-analisis').onclick = () => exportarCSV([datos], `analisis-${ticker}.csv`);
@@ -259,25 +496,216 @@ async function checkForUpdates() {
   try {
     const resp = await fetch('version.json', {cache: 'no-store'});
     const data = await resp.json();
-    const local = localStorage.getItem('carteraPRO_version');
+    const local = getUserSetting('version');
     if (local && local !== data.version) {
       if (confirm(`Nueva versión ${data.version} disponible. ¿Recargar?`)) {
-        localStorage.setItem('carteraPRO_version', data.version);
+        saveUserSetting('version', data.version);
         location.reload(true);
       }
     } else {
-      localStorage.setItem('carteraPRO_version', data.version);
+      saveUserSetting('version', data.version);
     }
   } catch(e) {
     console.log('Sin conexión para comprobar actualizaciones');
   }
 }
 function renderAjustes() {
-  app.innerHTML = `␊
-    <div class="card">␊
-      <h2>Ajustes</h2>␊
+  const brokers = getBrokers();
+  const bancos = getBancos();
+  const tema = getTema();
+  const idioma = getIdioma();
+  const privacidad = getPrivacidad();
+
+  app.innerHTML = `
+    <div class="card">
+      <h2>Ajustes</h2>
       <p class="mini-explica">Configura la aplicación a tu gusto: idioma, tema y listados de bancos o brokers habituales.</p>
-    </div>`;␊
+
+      <section>
+        <h3>Brokers y Plataformas</h3>
+        <textarea id="txt-brokers" rows="4" style="width:100%;">${brokers.join('\n')}</textarea>
+        <button id="btn-save-brokers" class="btn">Guardar brokers</button>
+      </section>
+
+      <section>
+        <h3>Bancos</h3>
+        <textarea id="txt-bancos" rows="4" style="width:100%;">${bancos.join('\n')}</textarea>
+        <button id="btn-save-bancos" class="btn">Guardar bancos</button>
+      </section>
+
+      <section>
+        <h3>Tema de la aplicación</h3>
+        <select id="sel-tema">
+          <option value="auto" ${tema === 'auto' ? 'selected' : ''}>Automático (según sistema)</option>
+          <option value="light" ${tema === 'light' ? 'selected' : ''}>Claro</option>
+          <option value="dark" ${tema === 'dark' ? 'selected' : ''}>Oscuro</option>
+        </select>
+        <button id="btn-save-tema" class="btn">Guardar tema</button>
+      </section>
+
+      <section>
+        <h3>Idioma</h3>
+        <select id="sel-idioma">
+          <option value="es" ${idioma === 'es' ? 'selected' : ''}>Español</option>
+          <option value="en" ${idioma === 'en' ? 'selected' : ''}>English</option>
+        </select>
+        <button id="btn-save-idioma" class="btn">Guardar idioma</button>
+      </section>
+
+      <section>
+        <h3>Modo privacidad</h3>
+        <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''} /> Ocultar cantidades</label>
+        <button id="btn-save-privacidad" class="btn">Guardar privacidad</button>
+      </section>
+    </div>`;
+
+  document.getElementById('btn-save-brokers').onclick = () => {
+    const nuevos = document.getElementById('txt-brokers').value.split('\n').map(s => s.trim()).filter(Boolean);
+    setBrokers(nuevos);
+    alert('Brokers guardados.');
+  };
+
+  document.getElementById('btn-save-bancos').onclick = () => {
+    const nuevos = document.getElementById('txt-bancos').value.split('\n').map(s => s.trim()).filter(Boolean);
+    setBancos(nuevos);
+    alert('Bancos guardados.');
+  };
+
+  document.getElementById('btn-save-tema').onclick = () => {
+    const nuevoTema = document.getElementById('sel-tema').value;
+    setTema(nuevoTema);
+    alert('Tema guardado. Recarga la página si no se aplica automáticamente.');
+  };
+
+  document.getElementById('btn-save-idioma').onclick = () => {
+    const nuevoIdioma = document.getElementById('sel-idioma').value;
+    setIdioma(nuevoIdioma);
+    alert('Idioma guardado.');
+  };
+
+  document.getElementById('btn-save-privacidad').onclick = () => {
+    const activo = document.getElementById('chk-privacidad').checked;
+    setPrivacidad(activo);
+    alert('Preferencia de privacidad guardada.');
+  };
+}
+
+// --------- Gráficos Dashboard ---------
+async function calcularPnLPorActivo() {
+  const [activos, trans] = await Promise.all([
+    db.activos.toArray(),
+    db.transacciones.toArray()
+  ]);
+  const compras = {}, ventas = {};
+  trans.forEach(t => {
+    const id = t.activoId;
+    const imp = (+t.cantidad || 0) * (+t.precio || 0);
+    if ((t.tipo || '').toLowerCase() === 'compra') {
+      compras[id] = compras[id] || { c:0, coste:0 };
+      compras[id].c += +t.cantidad || 0;
+      compras[id].coste += imp + (+t.comision || 0);
+    } else if ((t.tipo || '').toLowerCase() === 'venta') {
+      ventas[id] = ventas[id] || { c:0, ing:0 };
+      ventas[id].c += +t.cantidad || 0;
+      ventas[id].ing += imp - (+t.comision || 0);
+    }
+  });
+  return activos.map(a => {
+    const c = compras[a.id] || { c:0, coste:0 };
+    const v = ventas[a.id] || { c:0, ing:0 };
+    const avg = c.coste / (c.c || 1);
+    const realized = v.ing - avg * v.c;
+    const restante = c.coste - avg * v.c;
+    const valorActual = +a.valorActual || 0;
+    const unrealized = valorActual - restante;
+    return { nombre: a.nombre, pnl: realized + unrealized };
+  });
+}
+
+async function datosSavebackTin() {
+  const [movs, prestamos] = await Promise.all([
+    db.movimientos.where('tipo').equals('saveback').toArray(),
+    db.prestamos.toArray()
+  ]);
+  const porMes = {};
+  movs.forEach(m => {
+    const mes = (m.fecha || '').slice(0,7);
+    porMes[mes] = (porMes[mes] || 0) + (+m.importe || 0);
+  });
+  const labels = Object.keys(porMes).sort();
+  const saveData = labels.map(l => porMes[l]);
+  const tin = prestamos[0]?.tin || 0;
+  const tinData = labels.map(() => tin);
+  return { labels, saveData, tinData };
+}
+
+async function distribucionPorCampo(campo) {
+  const activos = await db.activos.toArray();
+  const map = {};
+  activos.forEach(a => {
+    const key = a[campo] || 'Otro';
+    map[key] = (map[key] || 0) + (+a.valorActual || 0);
+  });
+  const labels = Object.keys(map);
+  const data = labels.map(l => map[l]);
+  return { labels, data };
+}
+
+async function datosAsignacion() {
+  const activos = await db.activos.toArray();
+  const total = activos.reduce((s,a)=>s+(+a.valorActual||0),0);
+  const porTipo = {};
+  activos.forEach(a => {
+    porTipo[a.tipo] = (porTipo[a.tipo] || 0) + (+a.valorActual || 0);
+  });
+  const labels = Object.keys(porTipo);
+  const actual = labels.map(l => total ? porTipo[l]/total*100 : 0);
+  const objetivoRef = { 'Acción':40, 'ETF':40, 'Cripto':20 };
+  const objetivo = labels.map(l => objetivoRef[l] || 0);
+  return { labels, actual, objetivo };
+}
+
+async function renderGraficosDashboard() {
+  const pnl = await calcularPnLPorActivo();
+  const ctxPnl = document.getElementById('grafico-pnl').getContext('2d');
+  new Chart(ctxPnl, {
+    type:'bar',
+    data:{
+      labels:pnl.map(p=>p.nombre),
+      datasets:[{label:'P&L',data:pnl.map(p=>p.pnl), backgroundColor:'#26a69a'}]
+    },
+    options:{indexAxis:'y', plugins:{legend:{display:false}}}
+  });
+
+  const { labels:labS, saveData, tinData } = await datosSavebackTin();
+  const ctxS = document.getElementById('grafico-saveback').getContext('2d');
+  new Chart(ctxS, {
+    type:'line',
+    data:{labels:labS, datasets:[
+      {label:'Saveback',data:saveData, borderColor:'#3f8edc', tension:0.2},
+      {label:'TIN',data:tinData, borderColor:'#f39c12', tension:0.2}
+    ]},
+    options:{responsive:true}
+  });
+
+  const { labels:labA, actual, objetivo } = await datosAsignacion();
+  const ctxA = document.getElementById('grafico-asignacion').getContext('2d');
+  new Chart(ctxA, {
+    type:'bar',
+    data:{labels:labA, datasets:[
+      {label:'Actual %',data:actual, backgroundColor:'#2063c2'},
+      {label:'Objetivo %',data:objetivo, backgroundColor:'#e57373'}
+    ]},
+    options:{responsive:true}
+  });
+
+  const divisa = await distribucionPorCampo('moneda');
+  const ctxD = document.getElementById('grafico-divisa').getContext('2d');
+  new Chart(ctxD, {type:'doughnut', data:{labels:divisa.labels, datasets:[{data:divisa.data}]}, options:{responsive:true}});
+
+  const sector = await distribucionPorCampo('sector');
+  const ctxSec = document.getElementById('grafico-sector').getContext('2d');
+  new Chart(ctxSec, {type:'doughnut', data:{labels:sector.labels, datasets:[{data:sector.data}]}, options:{responsive:true}});
 }
 // Exportar CSV
 function exportarCSV(array, filename) {
@@ -294,7 +722,9 @@ function exportarCSV(array, filename) {
   a.click();
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
+  await initAjustes();
+  document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
   checkForUpdates();

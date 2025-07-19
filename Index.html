@@ -13,14 +13,15 @@
     <div class="logo">Cartera PRO</div>
     <nav>
       <ul>
-        <li><a href="#dashboard">Dashboard</a></li>
-        <li><a href="#inicio">Inicio</a></li>
-        <li><a href="#activos">Activos</a></li>
-        <li><a href="#transacciones">Transacciones</a></li>
-        <li><a href="#cuentas">Cuentas</a></li>
-        <li><a href="#tiposcambio">Tipos de cambio</a></li>
-        <li><a href="#analisisvalue">Análisis Value</a></li>
-        <li><a href="#ajustes">Ajustes</a></li>
+        <li><a href="#dashboard" data-icon="🏠"><span>Dashboard</span></a></li>
+        <li><a href="#inicio" data-icon="📊"><span>Inicio</span></a></li>
+        <li><a href="#activos" data-icon="📈"><span>Activos</span></a></li>
+        <li><a href="#transacciones" data-icon="💸"><span>Transacciones</span></a></li>
+        <li><a href="#cuentas" data-icon="💳"><span>Cuentas</span></a></li>
+        <li><a href="#prestamos" data-icon="🏦"><span>Préstamos</span></a></li>
+        <li><a href="#tiposcambio" data-icon="💱"><span>Tipos de cambio</span></a></li>
+        <li><a href="#analisisvalue" data-icon="📚"><span>Análisis Value</span></a></li>
+        <li><a href="#ajustes" data-icon="⚙️"><span>Ajustes</span></a></li>
       </ul>
     </nav>
     <footer style="margin-top:auto;padding:20px;font-size:0.88em;">
@@ -36,16 +37,29 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.3/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="js/app.js"></script>
   <script>
     const anioEl = document.getElementById('anio');
     if (anioEl) anioEl.textContent = new Date().getFullYear();
     const menuBtn = document.getElementById('menu-toggle');
     const sidebar = document.getElementById('sidebar');
-    menuBtn.addEventListener('click', () => sidebar.classList.toggle('abierto'));
+    if (window.innerWidth <= 680) sidebar.classList.add('mini');
+    menuBtn.addEventListener('click', () => {
+      if (sidebar.classList.contains('abierto')) {
+        sidebar.classList.remove('abierto');
+        sidebar.classList.add('mini');
+      } else {
+        sidebar.classList.add('abierto');
+        sidebar.classList.remove('mini');
+      }
+    });
     document.querySelectorAll('#sidebar a').forEach(a =>
       a.addEventListener('click', () => {
-        if (window.innerWidth <= 680) sidebar.classList.remove('abierto');
+        if (window.innerWidth <= 680) {
+          sidebar.classList.remove('abierto');
+          sidebar.classList.add('mini');
+        }
       })
     );
   </script>
