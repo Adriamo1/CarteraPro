@@ -24,7 +24,7 @@ db.version(4).stores({
 });
 
 const app = document.getElementById("app");
-const state = { accountMovements: [] };
+const state = { accountMovements: [], interestRates: [] };
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -221,17 +221,19 @@ async function calcularKpis() {
 async function calcularInteresMes() {
   const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
   if (!cuentas.length) return 0;
-  const [movs, rates] = await Promise.all([
-    db.movimientos.toArray(),
-    db.interestRates.toArray()
-  ]);
-  movs.sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  rates.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const rates = state.interestRates.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
 
   const hoy = new Date();
   const anyo = hoy.getFullYear();
   const mes = hoy.getMonth();
-  const diasMes = new Date(anyo, mes + 1, 0).getDate();
+  const diasMes = hoy.getDate();
   const inicioMes = `${anyo}-${String(mes+1).padStart(2,'0')}-01`;
 
   let total = 0;
@@ -1032,6 +1034,9 @@ async function mostrarModalMovimiento(cuentas) {
 
     modal.classList.add('hidden');
     renderCuentas();
+    if (location.hash === '#dashboard') {
+      renderDashboard();
+    }
   };
 }
 
@@ -1320,6 +1325,7 @@ async function obtenerTipoCambio(moneda) {
 window.addEventListener("DOMContentLoaded", async () => {
   await initAjustes();
   state.accountMovements = await db.movimientos.toArray();
+  state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
