@@ -139,3 +139,37 @@ footer {
   font-size: 0.88em;
   color: var(--color-muted);
 }
+
+/* ---------- Responsive ---------- */
+#menu-toggle {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1001;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 680px) {
+  #sidebar {
+    transform: translateX(-100%);
+    transition: transform var(--transition);
+    width: var(--sidebar-width);
+    position: fixed;
+    z-index: 1000;
+  }
+  #sidebar.abierto {
+    transform: translateX(0);
+  }
+  #menu-toggle {
+    display: block;
+  }
+  main {
+    margin-left: 0;
+    padding-top: 60px;
+  }
+}
