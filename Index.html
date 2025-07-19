@@ -1,114 +1,42 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cartera PRO - Finanzas Offline</title>
-    <meta name="description" content="Aplicación de finanzas que funciona sin conexión, guardando datos en tu dispositivo.">
-    <meta name="theme-color" content="#007bff">
-    <link id="manifest-link" rel="manifest">
-    <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cartera PRO</title>
+  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#2063c2" />
 </head>
 <body>
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="spinner"></div>
-    </div>
-    <div id="toast-container"></div>
-    <aside class="sidebar" id="sidebar">
-        <h1>Cartera PRO</h1>
-        <nav>
-            <ul>
-                <li><a class="nav-link active" href="#" data-target="resumen">Resumen</a></li>
-                <li><a class="nav-link" href="#" data-target="activos">Activos</a></li>
-                <li><a class="nav-link" href="#" data-target="transacciones">Transacciones</a></li>
-                <li><a class="nav-link" href="#" data-target="cuentas">Cuentas</a></li>
-                <li><a class="nav-link" href="#" data-target="configuracion">Configuración</a></li>
-            </ul>
-        </nav>
-        <div class="sidebar-footer">
-            <span>Versión 1.7</span>
-        </div>
-    </aside>
-    <div class="main-content" id="main-content">
-        <header class="content-header">
-            <div class="controls"> 
-                <button id="menu-toggle">☰</button> 
-                <h2 id="page-title">Resumen</h2> 
-            </div>
-            <div class="actions">
-                <button id="install-pwa-btn" class="btn" style="display: none;">Instalar App</button>
-            </div>
-        </header>
-        <main>
-            <section id="resumen" class="active">
-                <div class="kpi-grid">
-                    <div class="card kpi-card"><h4>VALOR TOTAL CARTERA</h4><p id="kpi-valor-total">0,00 €</p></div>
-                    <div class="card kpi-card"><h4>P&L INVERSIÓN (€)</h4><p id="kpi-pl-inversion-eur">0,00 €</p></div>
-                    <div class="card kpi-card"><h4>P&L INVERSIÓN (%)</h4><p id="kpi-pl-inversion-pct">0,00%</p></div>
-                    <div class="card kpi-card"><h4>IMPACTO DIVISA (€)</h4><p id="kpi-impacto-divisa">0,00 €</p></div>
-                </div>
-                <div class="chart-grid">
-                    <div class="chart-container"><h3>Distribución por Tipo de Activo</h3><canvas id="distribucionActivoChart"></canvas></div>
-                    <div class="chart-container"><h3>Evolución Valor Cartera</h3><canvas id="evolucionValorCarteraChart"></canvas></div>
-                </div>
-            </section>
-            <section id="activos">
-                 <div class="card">
-                    <div class="section-header">
-                        <h3>Mis Activos de Inversión</h3>
-                        <div>
-                            <button id="refresh-asset-prices-btn" class="btn btn-secondary" title="Actualizar precios desde API (requiere conexión)">Refrescar Precios</button>
-                            <button id="add-asset-btn" class="btn">Agregar Activo</button>
-                        </div>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead><tr><th>Ticker/Símbolo</th><th>Nombre</th><th>Tipo</th><th>Posición</th><th>Coste Medio</th><th>Precio Actual</th><th>Valor Actual</th><th>P&L</th><th>Acciones</th></tr></thead>
-                            <tbody id="assets-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-            <section id="transacciones">
-                <div class="card">
-                    <div class="section-header">
-                        <div class="filters">
-                            <input type="search" id="transaction-search" class="input-filter" placeholder="Buscar por activo...">
-                            <select id="transaction-type-filter" class="input-filter">
-                                <option value="todos">Todos los Tipos</option><option value="Compra">Compra</option><option value="Venta">Venta</option>
-                            </select>
-                        </div>
-                        <div class="actions">
-                            <button id="add-transaction-btn" class="btn">Agregar Transacción</button>
-                        </div>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead><tr><th>Fecha</th><th>Activo</th><th>Tipo</th><th>Cantidad</th><th>Precio</th><th>Coste Total (€)</th><th>Comisión (€)</th><th>P&L Neto (€)</th><th>Cuenta</th><th>Acciones</th></tr></thead>
-                            <tbody id="transactions-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-            <section id="cuentas">
-                <div class="cuentas-header"><select id="cuenta-selector" class="input-filter" style="flex-grow: 1;"></select><div><button id="transfer-btn" class="btn btn-secondary">Transferencia</button><button id="add-cuenta-btn" class="btn">Agregar Cuenta</button></div></div>
-                <div id="no-cuenta-view" class="card" style="text-align: center; display: none;"><p>No tienes ninguna cuenta registrada. ¡Agrega una para empezar!</p></div>
-                <div id="cuenta-details-view" style="display: none;"><div class="kpi-grid"><div class="card kpi-card"><h4>Saldo Actual</h4><p id="kpi-saldo-actual">€0.00</p></div><div class="card kpi-card"><h4>Saldo Invertido</h4><p id="kpi-saldo-invertido">€0.00</p></div></div><div class="cuentas-layout"><div class="card"><div class="section-header"><h3>Movimientos</h3><button id="add-movimiento-btn" class="btn">Agregar Movimiento</button></div><div class="table-container"><table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th>Concepto</th><th>Acciones</th></tr></thead><tbody id="movimientos-cuenta-table-body"></tbody></table></div></div><div class="chart-container"><h3>Evolución del Saldo</h3><canvas id="saldo-evolution-chart"></canvas></div></div></div>
-            </section>
-            <section id="configuracion">
-                <div class="config-grid"><div class="card config-card"><h4>Apariencia</h4><div class="form-group"><label for="config-theme">Tema</label><select id="config-theme" class="input-filter"><option value="system">Automático del Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></div></div><div class="card config-card"><h4>Conectividad (Opcional)</h4><p class="instructions">Introduce tu clave API para actualizar precios desde CoinGecko.</p><div class="form-group"><label for="config-coingecko-key">Clave API CoinGecko (Gratuita)</label><input type="password" id="config-coingecko-key"></div></div><div class="card config-card"><div class="section-header"><h4>Tipos de Cambio (vs EUR)</h4><button id="add-exchange-rate-btn" class="btn">Agregar</button></div><div class="table-container" style="max-height: 250px; overflow-y: auto;"><table class="data-table"><thead><tr><th>Moneda</th><th>Nombre</th><th>Tasa (1 EUR = X)</th><th>Acciones</th></tr></thead><tbody id="exchange-rates-table-body"></tbody></table></div></div><div class="card config-card"><h4>Gestión de Datos</h4><p class="instructions">Crea una copia de seguridad de todos tus datos o restáurala.</p><button id="export-all-json-btn" class="btn">Exportar Todo (JSON)</button><button id="import-all-json-btn" class="btn">Importar Todo (JSON)</button><input type="file" id="import-file-input" accept=".json" style="display: none;"></div><div class="card config-card danger-zone"><h4>Zona de Peligro</h4><p class="instructions">Esta acción es irreversible y borrará todos los datos de la aplicación de este navegador.</p><button id="delete-all-data-btn" class="btn btn-danger">Borrar Todos los Datos</button></div></div>
-            </section>
-        </main>
-    </div>
-    <div id="asset-modal" class="modal-overlay"><div class="modal-content"><h3></h3><form data-type="asset"><input type="hidden" name="id"><div class="form-group"><label>Ticker / Símbolo</label><input type="text" name="ticker" required></div><div class="form-group"><label>Nombre del Activo</label><input type="text" name="name" required></div><div class="form-group"><label>Tipo</label><select name="type" required><option value="Acción">Acción</option><option value="ETF">ETF</option><option value="Cripto">Cripto</option><option value="Fondo">Fondo de Inversión</option><option value="Otro">Otro</option></select></div><div class="form-group"><label>Moneda del Activo</label><select name="currency" required></select></div><div class="form-group"><label>Precio Actual (Manual)</label><input type="number" name="price" step="any" min="0" value="0"></div><div class="form-group"><label>ID de API (CoinGecko)</label><input type="text" name="apiId" placeholder="Ej: bitcoin, ethereum, apple"></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Guardar</button></div></form></div></div>
-    <div id="transaction-modal" class="modal-overlay"><div class="modal-content"><h3></h3><form data-type="transaction"><input type="hidden" name="id"><div class="form-group"><label>Fecha</label><input type="date" name="date" required></div><div class="form-group"><label>Activo</label><select name="assetId" required></select></div><div class="form-group"><label>Cuenta</label><select name="cuentaId" required></select></div><div class="form-group"><label>Tipo</label><select name="type" required><option value="Compra">Compra</option><option value="Venta">Venta</option></select></div><div class="form-group"><label>Cantidad</label><input type="number" name="quantity" step="any" min="0" required></div><div class="form-group"><label>Precio por unidad (en su moneda)</label><input type="number" name="price" step="any" min="0" required></div><div class="form-group"><label>Tipo de Cambio (1 EUR = X)</label><input type="number" name="exchangeRate" step="any" min="0" required></div><div class="form-group"><label>Comisión (en EUR)</label><input type="number" name="commission" step="any" min="0" value="0" required></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Guardar</button></div></form></div></div>
-    <div id="cuenta-modal" class="modal-overlay"><div class="modal-content"><h3></h3><form data-type="cuenta"><input type="hidden" name="id"><div class="form-group"><label>Nombre de la Cuenta</label><input type="text" name="nombre" required></div><div class="form-group"><label>Entidad (Banco, Bróker...)</label><input type="text" name="entidad"></div><div class="form-group"><label>Moneda</label><select name="currency" required></select></div><div class="form-group"><label>Saldo Inicial (en su moneda)</label><input type="number" name="saldoInicial" step="0.01" required value="0"></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Guardar</button></div></form></div></div>
-    <div id="movimiento-modal" class="modal-overlay"><div class="modal-content"><h3></h3><form data-type="movimiento"><input type="hidden" name="id"><div class="form-group"><label>Fecha</label><input type="date" name="date" required></div><div class="form-group"><label>Tipo</label><select name="type" required><option value="Ingreso">Ingreso</option><option value="Gasto">Gasto</option><option value="Intereses">Intereses</option></select></div><div class="form-group"><label>Importe (en la moneda de la cuenta)</label><input type="number" name="amount" step="0.01" min="0" required></div><div class="form-group"><label>Concepto</label><textarea name="concepto" rows="2"></textarea></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Guardar</button></div></form></div></div>
-    <div id="transferencia-modal" class="modal-overlay"><div class="modal-content"><h3>Realizar Transferencia</h3><form data-type="transferencia"><div class="form-group"><label>Desde Cuenta</label><select name="origenId" required></select></div><div class="form-group"><label>Hacia Cuenta</label><select name="destinoId" required></select></div><div class="form-group"><label>Importe</label><input type="number" name="amount" step="any" min="0" required></div><div class="form-group"><label>Fecha</label><input type="date" name="date" required></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Confirmar</button></div></form></div></div>
-    <div id="exchange-rate-modal" class="modal-overlay"><div class="modal-content"><h3></h3><form data-type="exchangeRate"><input type="hidden" name="id"><div class="form-group"><label>Nombre de la divisa</label><input type="text" name="nombre" required></div><div class="form-group"><label>Código ISO (3 letras)</label><input type="text" name="iso" required maxlength="3"></div><div class="form-group"><label>Tasa (1 EUR = X)</label><input type="number" name="value" step="any" required></div><div class="modal-actions"><button type="button" class="btn-cancel btn btn-secondary">Cancelar</button><button type="submit" class="btn">Guardar</button></div></form></div></div>
-    
-    <script src="js/app.js"></script>
+  <aside id="sidebar">
+    <div class="logo">Cartera PRO</div>
+    <nav>
+      <ul>
+        <li><a href="#dashboard">Dashboard</a></li>
+        <li><a href="#inicio">Inicio</a></li>
+        <li><a href="#activos">Activos</a></li>
+        <li><a href="#transacciones">Transacciones</a></li>
+        <li><a href="#cuentas">Cuentas</a></li>
+        <li><a href="#tiposcambio">Tipos de cambio</a></li>
+        <li><a href="#ajustes">Ajustes</a></li>
+      </ul>
+    </nav>
+    <footer style="margin-top:auto;padding:20px;font-size:0.88em;">
+      <p>
+        Por <a href="https://www.adrianmonge.es" target="_blank" rel="noopener">Adrián Monge</a>
+        © <span id="anio"></span>
+      </p>
+    </footer>
+  </aside>
+
+  <div class="main-content">
+    <main id="app"></main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.3/dist/dexie.min.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    document.getElementById('anio').textContent = new Date().getFullYear();
+  </script>
 </body>
 </html>
