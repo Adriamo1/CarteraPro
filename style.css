@@ -120,16 +120,18 @@ h2 {
 
 button, .btn {
   background: var(--color-primary);
-  color: white;
+  color: #fff;
   border: none;
-  padding: 8px 16px;
-  font-size: 1em;
+  padding: 12px 20px;
+  font-size: 1.1em;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background .2s;
+  transition: transform .1s;
 }
-button:hover, .btn:hover {
+button:active, .btn:active,
+button:focus, .btn:focus {
   background: var(--color-accent);
+  outline: none;
 }
 
 input, select {
@@ -205,6 +207,49 @@ footer {
   border-bottom: 1px solid #ccc;
   padding: 4px 6px;
   text-align: left;
+}
+
+/* tablas adaptables */
+.responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.responsive-table th,
+.responsive-table td {
+  padding: 6px;
+  border-bottom: 1px solid #ccc;
+}
+
+@media (max-width: 680px) {
+  .responsive-table thead {
+    display: none;
+  }
+  .responsive-table tbody,
+  .responsive-table tr,
+  .responsive-table td {
+    display: block;
+    width: 100%;
+  }
+  .responsive-table tr {
+    margin-bottom: var(--gap-sm);
+    background: var(--color-card);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    padding: var(--gap-sm);
+  }
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-weight: bold;
+    color: var(--color-muted);
+  }
+  .responsive-table .col-ocultar {
+    display: none;
+  }
 }
 
 /* ---------- Responsive ---------- */

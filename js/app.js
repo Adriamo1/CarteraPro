@@ -233,10 +233,15 @@ async function renderActivos() {
   } else {
       for (const a of activos) {
         const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
-        const filas = trans.map(t => `<tr><td>${t.fecha}</td><td>${t.tipo}</td><td>${t.cantidad}</td><td>${t.precio}</td></tr>`).join('');
+        const filas = trans.map(t => `<tr>
+            <td data-label="Fecha">${t.fecha}</td>
+            <td data-label="Tipo" class="col-ocultar">${t.tipo}</td>
+            <td data-label="Cant.">${t.cantidad}</td>
+            <td data-label="Precio" class="col-ocultar">${t.precio}</td>
+          </tr>`).join('');
         html += `<section class="detalle">
           <h3>${a.nombre}</h3>
-          <table class="tabla-detalle"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filas}</tbody></table>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filas}</tbody></table>
           <canvas id="graf-act-${a.id}" height="120"></canvas>
         </section>`;
       }
@@ -311,11 +316,15 @@ async function renderCuentas() {
   } else {
       for (const c of cuentas) {
         const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
-        const filas = movs.map(m => `<tr><td>${m.fecha}</td><td>${formatCurrency(m.importe)}</td><td>${m.descripcion||''}</td></tr>`).join('');
+        const filas = movs.map(m => `<tr>
+            <td data-label="Fecha">${m.fecha}</td>
+            <td data-label="Importe">${formatCurrency(m.importe)}</td>
+            <td data-label="Concepto" class="col-ocultar">${m.descripcion||''}</td>
+          </tr>`).join('');
         const interes = (c.saldo || 0) * 0.01;
         html += `<section class="detalle">
           <h3>${c.nombre}</h3>
-          <table class="tabla-detalle"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
           <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
         </section>`;
       }
@@ -428,8 +437,11 @@ function renderAnalisisValue() {
         'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
         'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a
-      }).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-      cont.innerHTML = `<table class="tabla-analisis"><tbody>${filas}</tbody></table>
+      }).map(([k,v])=>`<tr>
+          <td data-label="Campo">${k}</td>
+          <td data-label="Valor">${v}</td>
+        </tr>`).join('');
+      cont.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
         <button id="exp-analisis" class="btn">Exportar CSV</button>
         <button id="copiar-md" class="btn">Copiar Markdown</button>`;
       document.getElementById('exp-analisis').onclick = () => exportarCSV([datos], `analisis-${ticker}.csv`);
