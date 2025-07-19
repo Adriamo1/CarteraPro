@@ -20,6 +20,29 @@ db.version(3).stores({
 
 const app = document.getElementById("app");
 
+// Cola simple para peticiones API secuenciales
+const apiQueue = [];
+function fetchExchangeRates(url) {
+  return new Promise(resolve => {
+    apiQueue.push({ url, resolve });
+    processApiQueue();
+  });
+}
+
+function processApiQueue() {
+  if (processApiQueue.running || !apiQueue.length) return;
+  processApiQueue.running = true;
+  const { url, resolve } = apiQueue.shift();
+  fetch(url)
+    .then(r => r.json())
+    .then(d => resolve(d))
+    .catch(() => resolve(null))
+    .finally(() => {
+      processApiQueue.running = false;
+      processApiQueue();
+    });
+}
+
 function formatCurrency(num) {
   if (getPrivacidad()) return '•••';
   return Number(num || 0).toLocaleString('es-ES', {
@@ -832,6 +855,7 @@ function crearModalTransaccion() {
         <input type="date" name="fecha" required />
         <input type="number" step="any" name="cantidad" placeholder="Cantidad" required />
         <input type="number" step="any" name="precio" id="inp-precio" placeholder="Precio" required />
+        <button type="button" class="btn" id="btn-precio">📈 Obtener precio actual</button>
         <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
         <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
         <datalist id="lista-brokers"></datalist>
@@ -847,7 +871,7 @@ async function mostrarModalTransaccion(activos) {
   crearModalTransaccion();
   const modal = document.getElementById('transaction-modal');
   const lista = document.getElementById('sel-activo');
-  lista.innerHTML = activos.map(a => `<option value="${a.id}" data-ticker="${a.ticker}" data-moneda="${a.moneda}">${a.nombre}</option>`).join('');
+  lista.innerHTML = activos.map(a => `<option value="${a.id}" data-ticker="${a.ticker}" data-moneda="${a.moneda}" data-tipo="${a.tipo}">${a.nombre}</option>`).join('');
   const brokers = getBrokers();
   const dl = document.getElementById('lista-brokers');
   dl.innerHTML = brokers.map(b => `<option value="${b}">`).join('');
@@ -857,12 +881,15 @@ async function mostrarModalTransaccion(activos) {
   const cantEl = modal.querySelector('[name="cantidad"]');
   const comEl = document.getElementById('inp-comision');
   const totalEl = document.getElementById('total-eur');
+  const btnPrecio = document.getElementById('btn-precio');
 
   async function actualizarPrecio() {
     const opt = lista.selectedOptions[0];
     if (!opt) return;
     const ticker = opt.dataset.ticker;
-    const info = await obtenerPrecioYMoneda(ticker);
+    const tipo = opt.dataset.tipo || '';
+    const moneda = opt.dataset.moneda || 'EUR';
+    const info = await obtenerPrecioYMoneda(ticker, tipo, moneda, parseFloat(precioEl.value));
     precioEl.value = info.precio;
     precioEl.dataset.moneda = info.moneda;
     const tc = await obtenerTipoCambio(info.moneda);
@@ -878,6 +905,7 @@ async function mostrarModalTransaccion(activos) {
   }
 
   lista.onchange = actualizarPrecio;
+  btnPrecio.onclick = actualizarPrecio;
   cantEl.oninput = async () => {
     const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
     calcularTotal(tc);
@@ -911,15 +939,22 @@ async function mostrarModalTransaccion(activos) {
   };
 }
 
-async function obtenerPrecioYMoneda(ticker) {
+async function obtenerPrecioYMoneda(ticker, tipo, moneda, manual) {
   try {
-    const res = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`);
-    const j = await res.json();
-    const r = j.quoteResponse?.result?.[0] || {};
-    return { precio: r.regularMarketPrice || 0, moneda: r.currency || 'EUR' };
-  } catch {
-    return { precio: 0, moneda: 'EUR' };
-  }
+    if ((tipo || '').toLowerCase() === 'cripto') {
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=${moneda.toLowerCase()}`;
+      const data = await fetchExchangeRates(url);
+      const precio = data?.[ticker.toLowerCase()]?.[moneda.toLowerCase()];
+      if (precio) return { precio, moneda };
+    } else {
+      const key = getApiKeyAv();
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${key}`;
+      const data = await fetchExchangeRates(url);
+      const precio = parseFloat(data?.['Global Quote']?.['05. price']);
+      if (precio) return { precio, moneda };
+    }
+  } catch {}
+  return { precio: manual || 0, moneda };
 }
 
 async function obtenerTipoCambio(moneda) {
