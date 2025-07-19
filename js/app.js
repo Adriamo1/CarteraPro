@@ -24,7 +24,11 @@ db.version(4).stores({
 });
 
 const app = document.getElementById("app");
-const state = { accountMovements: [], interestRates: [] };
+const state = {
+  accountMovements: [],
+  interestRates: [],
+  settings: { lastExchangeUpdate: null }
+};
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -44,6 +48,7 @@ function processApiQueue() {
     .then(d => resolve(d))
     .catch(() => resolve(null))
     .finally(() => {
+      state.settings.lastExchangeUpdate = new Date().toISOString();
       processApiQueue.running = false;
       processApiQueue();
     });
@@ -529,6 +534,7 @@ function renderTiposCambio() {
     app.innerHTML = `
     <div class="card">
       <h2>Tipos de cambio</h2>
+      <div class="mini-explica" id="last-update-tc">Última actualización: ${state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A'}</div>
       <button id="refresh-tc" class="btn">Refrescar tasas</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
