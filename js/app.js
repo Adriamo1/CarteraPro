@@ -336,6 +336,7 @@ function renderTransacciones() {
     <div class="card">
       <h2>Transacciones</h2>
       <p class="mini-explica">Aquí puedes registrar compras y ventas de tus activos. Total registradas: ${total}.</p>
+      <button class="btn" id="add-trans">Añadir transacción</button>
       <button class="btn" id="exportar-trans">Exportar Transacciones (CSV)</button>
       <ul>
         ${trans.map(t => `<li>${t.fecha} - ${t.tipo} ${t.cantidad} de ${mapa[t.activoId] || "?"} a ${t.precio}€</li>`).join("")}
@@ -344,7 +345,11 @@ function renderTransacciones() {
 
     document.getElementById("exportar-trans").onclick = async () => {
       const datos = await db.transacciones.toArray();
-    exportarCSV(datos, "transacciones.csv");
+      exportarCSV(datos, "transacciones.csv");
+    };
+
+    document.getElementById('add-trans').onclick = () => {
+      mostrarModalTransaccion(activos);
     };
   });
 }
@@ -807,6 +812,121 @@ function exportarCSV(array, filename) {
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
+}
+
+// ----- Modal Transacciones -----
+function crearModalTransaccion() {
+  if (document.getElementById('transaction-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'transaction-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nueva transacción</h3>
+      <form id="form-transaccion">
+        <select name="activoId" id="sel-activo" required></select>
+        <select name="tipo" required>
+          <option value="compra">Compra</option>
+          <option value="venta">Venta</option>
+        </select>
+        <input type="date" name="fecha" required />
+        <input type="number" step="any" name="cantidad" placeholder="Cantidad" required />
+        <input type="number" step="any" name="precio" id="inp-precio" placeholder="Precio" required />
+        <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
+        <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
+        <datalist id="lista-brokers"></datalist>
+        <div id="total-eur" class="mini-explica"></div>
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-trans">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+async function mostrarModalTransaccion(activos) {
+  crearModalTransaccion();
+  const modal = document.getElementById('transaction-modal');
+  const lista = document.getElementById('sel-activo');
+  lista.innerHTML = activos.map(a => `<option value="${a.id}" data-ticker="${a.ticker}" data-moneda="${a.moneda}">${a.nombre}</option>`).join('');
+  const brokers = getBrokers();
+  const dl = document.getElementById('lista-brokers');
+  dl.innerHTML = brokers.map(b => `<option value="${b}">`).join('');
+  modal.classList.remove('hidden');
+
+  const precioEl = document.getElementById('inp-precio');
+  const cantEl = modal.querySelector('[name="cantidad"]');
+  const comEl = document.getElementById('inp-comision');
+  const totalEl = document.getElementById('total-eur');
+
+  async function actualizarPrecio() {
+    const opt = lista.selectedOptions[0];
+    if (!opt) return;
+    const ticker = opt.dataset.ticker;
+    const info = await obtenerPrecioYMoneda(ticker);
+    precioEl.value = info.precio;
+    precioEl.dataset.moneda = info.moneda;
+    const tc = await obtenerTipoCambio(info.moneda);
+    calcularTotal(tc);
+  }
+
+  function calcularTotal(tc) {
+    const cant = parseFloat(cantEl.value) || 0;
+    const precio = parseFloat(precioEl.value) || 0;
+    const com = parseFloat(comEl.value) || 0;
+    const total = cant * precio / (tc || 1) + com;
+    totalEl.textContent = `Total EUR aprox.: ${formatCurrency(total)}`;
+  }
+
+  lista.onchange = actualizarPrecio;
+  cantEl.oninput = async () => {
+    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
+    calcularTotal(tc);
+  };
+  precioEl.oninput = async () => {
+    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
+    calcularTotal(tc);
+  };
+  comEl.oninput = async () => {
+    const tc = await obtenerTipoCambio(precioEl.dataset.moneda || 'EUR');
+    calcularTotal(tc);
+  };
+
+  actualizarPrecio();
+
+  modal.querySelector('#cancel-trans').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  modal.querySelector('#form-transaccion').onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    data.cantidad = parseFloat(data.cantidad);
+    data.precio = parseFloat(data.precio);
+    data.comision = parseFloat(data.comision) || 0;
+    db.transacciones.add(data).then(() => {
+      modal.classList.add('hidden');
+      renderTransacciones();
+    });
+  };
+}
+
+async function obtenerPrecioYMoneda(ticker) {
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`);
+    const j = await res.json();
+    const r = j.quoteResponse?.result?.[0] || {};
+    return { precio: r.regularMarketPrice || 0, moneda: r.currency || 'EUR' };
+  } catch {
+    return { precio: 0, moneda: 'EUR' };
+  }
+}
+
+async function obtenerTipoCambio(moneda) {
+  if (moneda === 'EUR') return 1;
+  const reg = await db.tiposCambio.where('moneda').equals(moneda).last();
+  if (reg) return parseFloat(reg.tasa || 1);
+  return getTipoCambio();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
