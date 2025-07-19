@@ -499,6 +499,7 @@ function renderTiposCambio() {
     app.innerHTML = `
     <div class="card">
       <h2>Tipos de cambio</h2>
+      <button id="refresh-tc" class="btn">Refrescar tasas</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
         <input name="tasa" type="number" step="any" placeholder="Tasa" required />
@@ -516,6 +517,23 @@ function renderTiposCambio() {
       const data = Object.fromEntries(fd.entries());
       data.tasa = parseFloat(data.tasa);
       db.tiposCambio.add(data).then(renderTiposCambio);
+    };
+
+    document.getElementById('refresh-tc').onclick = async () => {
+      const data = await fetchExchangeRates('https://api.exchangerate.host/latest?base=EUR');
+      if (data && data.rates) {
+        const fecha = data.date || new Date().toISOString().slice(0,10);
+        const registros = Object.entries(data.rates).map(([moneda, tasa]) => ({
+          moneda,
+          tasa: parseFloat(tasa),
+          fecha
+        }));
+        await db.tiposCambio.bulkAdd(registros);
+        alert('Tasas actualizadas');
+        renderTiposCambio();
+      } else {
+        alert('No se pudieron obtener las tasas');
+      }
     };
   });
 }
