@@ -780,6 +780,10 @@ function renderAjustes() {
         <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''}/> Ocultar cantidades</label>
         <button id="btn-save-privacidad" class="btn">Guardar privacidad</button>
       </section>
+      <section>
+        <h3>Exportar datos</h3>
+        <button id="btn-exportar-datos" class="btn">Exportar Backup</button>
+      </section>
     </div>`;
 
   document.getElementById('btn-save-brokers').onclick = () => {
@@ -835,6 +839,9 @@ function renderAjustes() {
     setPrivacidad(activo);
     alert('Preferencia de privacidad guardada.');
   };
+
+  const btnExp = document.getElementById('btn-exportar-datos');
+  if (btnExp) btnExp.onclick = exportarBackup;
 }
 
 function renderInfo() {
@@ -1013,6 +1020,20 @@ function parseCSV(text) {
     headers.forEach((h,i)=> obj[h] = (cols[i] || '').trim());
     return obj;
   });
+}
+
+async function exportarBackup() {
+  const backup = {};
+  for (const tabla of db.tables) {
+    backup[tabla.name] = await tabla.toArray();
+  }
+  const blob = new Blob([JSON.stringify(backup)], {
+    type: 'application/json'
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `carteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
 }
 
 // ----- Modal Movimientos -----
