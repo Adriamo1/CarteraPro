@@ -18,6 +18,11 @@ db.version(3).stores({
   prestamos: "++id,tin"
 });
 
+// Versión 4: historial de TIN para cuentas remuneradas
+db.version(4).stores({
+  interestRates: "++id,fecha,tin"
+});
+
 const app = document.getElementById("app");
 
 // Cola simple para peticiones API secuenciales
@@ -212,6 +217,39 @@ async function calcularKpis() {
   return { valorTotal, rentTotal, realized, unrealized, valorPorTipo };
 }
 
+async function calcularInteresMes() {
+  const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
+  if (!cuentas.length) return 0;
+  const [movs, rates] = await Promise.all([
+    db.movimientos.toArray(),
+    db.interestRates.toArray()
+  ]);
+  movs.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  rates.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+
+  const hoy = new Date();
+  const anyo = hoy.getFullYear();
+  const mes = hoy.getMonth();
+  const diasMes = new Date(anyo, mes + 1, 0).getDate();
+  const inicioMes = `${anyo}-${String(mes+1).padStart(2,'0')}-01`;
+
+  let total = 0;
+  for (const cuenta of cuentas) {
+    let saldo = (+cuenta.saldo || 0) +
+      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha < inicioMes)
+          .reduce((s,m)=>s+(+m.importe||0),0);
+    for (let d=1; d<=diasMes; d++) {
+      const fechaDia = `${anyo}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const rate = rates.filter(r=>r.fecha<=fechaDia).pop();
+      const tin = rate ? parseFloat(rate.tin) : 0;
+      total += saldo * (tin/100) / 365;
+      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha===fechaDia)
+          .forEach(mov => { saldo += (+mov.importe||0); });
+    }
+  }
+  return total;
+}
+
 function navegar() {
   const hash = location.hash || "#dashboard";
   const render = vistas[hash];
@@ -239,6 +277,7 @@ function renderResumen() {
 
 async function renderDashboard() {
   const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
+  const interesMes = await calcularInteresMes();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   app.innerHTML = `
@@ -265,6 +304,13 @@ async function renderDashboard() {
           <div class="kpi-value ${realized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(realized)}</div>
           <div>No realizada</div>
           <div class="kpi-value ${unrealized>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(unrealized)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💶</div>
+        <div>
+          <div>Interés devengado (mes)</div>
+          <div class="kpi-value">${formatCurrency(interesMes)}</div>
         </div>
       </div>
       <div class="kpi-card">
