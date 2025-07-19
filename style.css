@@ -189,6 +189,24 @@ footer {
   color: var(--color-negativo);
 }
 
+/* ----- Detalles ----- */
+.detalle {
+  margin-top: var(--gap-md);
+}
+
+.tabla-detalle {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--gap-md);
+}
+
+.tabla-detalle th,
+.tabla-detalle td {
+  border-bottom: 1px solid #ccc;
+  padding: 4px 6px;
+  text-align: left;
+}
+
 /* ---------- Responsive ---------- */
 #menu-toggle {
   display: none;

@@ -8,6 +8,11 @@ db.version(1).stores({
   ajustes: "clave,valor"
 });
 
+// Versión 2: movimientos de cuentas
+db.version(2).stores({
+  movimientos: "++id,cuentaId,fecha,importe,descripcion"
+});
+
 const app = document.getElementById("app");
 
 function formatCurrency(num) {
@@ -65,6 +70,14 @@ function setIdioma(idioma) {
 }
 function getIdioma() {
   return localStorage.getItem(SETTINGS_PREFIX + "idioma") || "es";
+}
+
+function setVista(seccion, modo) {
+  localStorage.setItem(SETTINGS_PREFIX + "vista_" + seccion, modo);
+}
+
+function getVista(seccion) {
+  return localStorage.getItem(SETTINGS_PREFIX + "vista_" + seccion) || "resumen";
 }
 
 const vistas = {
@@ -198,13 +211,14 @@ async function renderDashboard() {
   renderGraficosDashboard();
 }
 
-function renderActivos() {
-   db.activos.toArray().then(activos => {
-    const total = activos.length;
-    app.innerHTML = `
-    <div class="card">
+async function renderActivos() {
+  const activos = await db.activos.toArray();
+  const total = activos.length;
+  const modo = getVista('activos');
+  let html = `<div class="card">
       <h2>Activos</h2>
       <p class="mini-explica">Gestiona aquí los valores y productos en los que inviertes. Total registrados: ${total}.</p>
+      <button id="toggle-activos" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <form id="form-activo">
         <input name="nombre" placeholder="Nombre" required />
         <input name="ticker" placeholder="Ticker" required />
@@ -212,24 +226,50 @@ function renderActivos() {
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
-      </form>
-      <ul>
-        ${activos.map(a => `<li>${a.nombre} (${a.ticker})</li>`).join("")}
-      </ul>
-    </div>`;
+      </form>`;
 
-    document.getElementById("form-activo").onsubmit = e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd.entries());
-      db.activos.add(data).then(renderActivos);
-    };
+  if (modo === 'resumen') {
+      html += `<ul>${activos.map(a => `<li>${a.nombre} (${a.ticker})</li>`).join('')}</ul>`;
+  } else {
+      for (const a of activos) {
+        const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
+        const filas = trans.map(t => `<tr><td>${t.fecha}</td><td>${t.tipo}</td><td>${t.cantidad}</td><td>${t.precio}</td></tr>`).join('');
+        html += `<section class="detalle">
+          <h3>${a.nombre}</h3>
+          <table class="tabla-detalle"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filas}</tbody></table>
+          <canvas id="graf-act-${a.id}" height="120"></canvas>
+        </section>`;
+      }
+  }
+  html += '</div>';
+  app.innerHTML = html;
 
-    document.getElementById("exportar-activos").onclick = async () => {
-      const data = await db.activos.toArray();
-      exportarCSV(data, "activos.csv");
-    };
-  });
+  document.getElementById('toggle-activos').onclick = () => {
+    setVista('activos', modo === 'detalle' ? 'resumen' : 'detalle');
+    renderActivos();
+  };
+
+  document.getElementById("form-activo").onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    db.activos.add(data).then(renderActivos);
+  };
+
+  document.getElementById("exportar-activos").onclick = async () => {
+    const data = await db.activos.toArray();
+    exportarCSV(data, "activos.csv");
+  };
+
+  if (modo === 'detalle') {
+    for (const a of activos) {
+      const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
+      const ctx = document.getElementById(`graf-act-${a.id}`).getContext('2d');
+      const labels = trans.map(t => t.fecha);
+      const datos = trans.map(t => (+t.cantidad || 0) * (+t.precio || 0) * (t.tipo.toLowerCase() === 'compra' ? -1 : 1));
+      new Chart(ctx, {type:'bar', data:{labels,datasets:[{data:datos,backgroundColor:'#70c1b3'}]}, options:{plugins:{legend:{display:false}}, indexAxis:'y'}});
+    }
+  }
 }
 
 function renderTransacciones() {
@@ -253,31 +293,48 @@ function renderTransacciones() {
   });
 }
 
-function renderCuentas() {
-  db.cuentas.toArray().then(cuentas => {
-    app.innerHTML = `
-    <div class="card">
+async function renderCuentas() {
+  const cuentas = await db.cuentas.toArray();
+  const modo = getVista('cuentas');
+  let html = `<div class="card">
       <h2>Cuentas</h2>
+      <button id="toggle-cuentas" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <form id="form-cuenta">
         <input name="nombre" placeholder="Nombre" required />
         <input name="banco" placeholder="Banco" required />
         <input name="tipo" placeholder="Tipo" value="corriente" required />
         <input name="saldo" placeholder="Saldo" type="number" step="any" value="0" required />
         <button class="btn">Guardar</button>
-      </form>
-      <ul>
-        ${cuentas.map(c => `<li>${c.nombre} (${c.banco}) - ${c.saldo}€</li>`).join("")}
-      </ul>
-    </div>`;
+      </form>`;
+  if (modo === 'resumen') {
+      html += `<ul>${cuentas.map(c => `<li>${c.nombre} (${c.banco}) - ${c.saldo}€</li>`).join('')}</ul>`;
+  } else {
+      for (const c of cuentas) {
+        const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
+        const filas = movs.map(m => `<tr><td>${m.fecha}</td><td>${formatCurrency(m.importe)}</td><td>${m.descripcion||''}</td></tr>`).join('');
+        const interes = (c.saldo || 0) * 0.01;
+        html += `<section class="detalle">
+          <h3>${c.nombre}</h3>
+          <table class="tabla-detalle"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
+          <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
+        </section>`;
+      }
+  }
+  html += '</div>';
+  app.innerHTML = html;
 
-    document.getElementById('form-cuenta').onsubmit = e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd.entries());
-      data.saldo = parseFloat(data.saldo);
-      db.cuentas.add(data).then(renderCuentas);
-    };
-  });
+  document.getElementById('toggle-cuentas').onclick = () => {
+    setVista('cuentas', modo === 'detalle' ? 'resumen' : 'detalle');
+    renderCuentas();
+  };
+
+  document.getElementById('form-cuenta').onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    data.saldo = parseFloat(data.saldo);
+    db.cuentas.add(data).then(renderCuentas);
+  };
 }
 
 function renderTiposCambio() {
