@@ -346,6 +346,7 @@ async function renderActivos() {
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
+        <button type="button" class="btn" id="btn-analisis-value">📊 Analizar empresa</button>
       </form>`;
 
   if (modo === 'resumen') {
@@ -384,6 +385,10 @@ async function renderActivos() {
   document.getElementById("exportar-activos").onclick = async () => {
     const data = await db.activos.toArray();
     exportarCSV(data, "activos.csv");
+  };
+
+  document.getElementById('btn-analisis-value').onclick = () => {
+    mostrarModalAnalisis();
   };
 
   if (modo === 'detalle') {
@@ -538,6 +543,17 @@ function renderTiposCambio() {
   });
 }
 
+function recomendacionBuffett(d) {
+  let score = 0;
+  if (d.per > 0 && d.per < 15) score++;
+  if (d.roe > 15) score++;
+  if (d.fcfYield > 5) score++;
+  if (d.deudaPatrimonio < 100) score++;
+  if (score >= 3) return 'Comprar';
+  if (score === 2) return 'Mantener';
+  return 'Vender';
+}
+
 async function analizarEmpresa(ticker) {
   const url = `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${ticker}?modules=defaultKeyStatistics,financialData,summaryProfile,price`;
   const res = await fetch(url);
@@ -563,6 +579,7 @@ async function analizarEmpresa(ticker) {
     payout: r.summaryDetail?.payoutRatio?.raw ? r.summaryDetail.payoutRatio.raw * 100 : 0,
     crecimientoIngresos5a: r.defaultKeyStatistics?.revenueGrowth?.raw ? r.defaultKeyStatistics.revenueGrowth.raw * 100 : 0
   };
+  d.recomendacion = recomendacionBuffett(d);
   return d;
 }
 
@@ -602,7 +619,8 @@ function renderAnalisisValue() {
         'Deuda / Patrimonio': datos.deudaPatrimonio,
         'Cash/sh': datos.cashPorAccion,
         Payout: datos.payout,
-        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a
+        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        Recomendación: datos.recomendacion
       }).map(([k,v])=>`<tr>
           <td data-label="Campo">${k}</td>
           <td data-label="Valor">${v}</td>
@@ -1075,6 +1093,77 @@ async function mostrarModalTransaccion(activos) {
       modal.classList.add('hidden');
       renderTransacciones();
     });
+  };
+}
+
+// ----- Modal Análisis Value -----
+function crearModalAnalisis() {
+  if (document.getElementById('analisis-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'analisis-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Análisis Value</h3>
+      <form id="form-analisis-modal">
+        <input name="ticker" placeholder="Ticker o ID" required />
+        <button class="btn">Analizar</button>
+        <button type="button" class="btn" id="cancel-analisis">Cerrar</button>
+      </form>
+      <div id="analisis-res"></div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalAnalisis() {
+  crearModalAnalisis();
+  const modal = document.getElementById('analisis-modal');
+  const form = document.getElementById('form-analisis-modal');
+  const res = document.getElementById('analisis-res');
+  modal.classList.remove('hidden');
+
+  modal.querySelector('#cancel-analisis').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const ticker = form.ticker.value.trim().toUpperCase();
+    if (!ticker) return;
+    res.textContent = 'Cargando...';
+    try {
+      const datos = await analizarEmpresa(ticker);
+      const filas = Object.entries({
+        Ticker: datos.ticker,
+        Empresa: datos.empresa,
+        Sector: datos.sector,
+        'Precio actual': datos.precioActual,
+        PER: datos.per,
+        PEG: datos.peg,
+        'P/B': datos.pb,
+        ROE: datos.roe,
+        ROIC: datos.roic,
+        'Margen Neto': datos.margenNeto,
+        FCF: datos.fcf,
+        'FCF Yield': datos.fcfYield,
+        'Deuda / Patrimonio': datos.deudaPatrimonio,
+        'Cash/sh': datos.cashPorAccion,
+        Payout: datos.payout,
+        'Crecimiento ingresos 5 años': datos.crecimientoIngresos5a,
+        Recomendación: datos.recomendacion
+      }).map(([k,v])=>`<tr><td data-label="Campo">${k}</td><td data-label="Valor">${v}</td></tr>`).join('');
+      res.innerHTML = `<table class="tabla-analisis responsive-table"><tbody>${filas}</tbody></table>
+        <button id="exp-analisis-modal" class="btn">Exportar CSV</button>
+        <button id="copiar-md-modal" class="btn">Copiar Markdown</button>`;
+      document.getElementById('exp-analisis-modal').onclick = () => exportarCSV([datos], `analisis-${ticker}.csv`);
+      document.getElementById('copiar-md-modal').onclick = () => {
+        const md = Object.entries(datos).map(([k,v])=>`|${k}|${v}|`).join('\n');
+        navigator.clipboard.writeText(md);
+        alert('Copiado en formato Markdown');
+      };
+    } catch {
+      res.textContent = 'No se pudo obtener datos';
+    }
   };
 }
 
