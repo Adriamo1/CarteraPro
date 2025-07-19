@@ -843,7 +843,13 @@ function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
   const mostrar = (local, remote) => {
     const fecha = local.date || '';
-    const ultima = remote ? remote.version : (getUserSetting('latest_version')?.version || '');
+    let ultima = '';
+    if (remote) {
+      ultima = `${remote.version} (${remote.date || ''})`;
+    } else {
+      const l = getUserSetting('latest_version');
+      ultima = l ? `${l.version} (${l.date || ''})` : '';
+    }
     document.getElementById('info-cont').innerHTML = `
       <p>Versión actual: ${local.version}</p>
       <p>Última versión disponible: <span id="ultima-version">${ultima}</span></p>
