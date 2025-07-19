@@ -24,6 +24,7 @@ db.version(4).stores({
 });
 
 const app = document.getElementById("app");
+const state = { accountMovements: [] };
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -250,6 +251,15 @@ async function calcularInteresMes() {
   return total;
 }
 
+async function totalSavebackPendiente() {
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  return state.accountMovements
+    .filter(m => m.tipo === 'Saveback pendiente')
+    .reduce((s, m) => s + (+m.importe || 0), 0);
+}
+
 function navegar() {
   const hash = location.hash || "#dashboard";
   const render = vistas[hash];
@@ -278,6 +288,7 @@ function renderResumen() {
 async function renderDashboard() {
   const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
   const interesMes = await calcularInteresMes();
+  const savePend = await totalSavebackPendiente();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   app.innerHTML = `
@@ -311,6 +322,13 @@ async function renderDashboard() {
         <div>
           <div>Interés devengado (mes)</div>
           <div class="kpi-value">${formatCurrency(interesMes)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💳</div>
+        <div>
+          <div>Saveback pendiente</div>
+          <div class="kpi-value">${formatCurrency(savePend)}</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -985,25 +1003,31 @@ async function mostrarModalMovimiento(cuentas) {
     data.cuentaId = parseInt(data.cuentaId);
     data.importe = parseFloat(data.importe);
     const cuenta = await db.cuentas.get(data.cuentaId);
-    await db.movimientos.add({
+    const mov = {
       cuentaId: data.cuentaId,
       fecha: data.fecha,
       importe: data.importe,
       descripcion: data.descripcion || '',
       tipo: data.tipo
-    });
+    };
+    const id = await db.movimientos.add(mov);
+    mov.id = id;
+    state.accountMovements.push(mov);
     await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
 
     if (data.tipo === 'Gasto Tarjeta') {
       const porcentaje = getSavebackRate();
       const importeSave = Math.abs(data.importe) * (porcentaje / 100);
-      await db.movimientos.add({
+      const movSave = {
         cuentaId: data.cuentaId,
         fecha: data.fecha,
         importe: importeSave,
         descripcion: 'Saveback pendiente',
-        tipo: 'saveback'
-      });
+        tipo: 'Saveback pendiente'
+      };
+      const id2 = await db.movimientos.add(movSave);
+      movSave.id = id2;
+      state.accountMovements.push(movSave);
     }
 
     modal.classList.add('hidden');
@@ -1295,6 +1319,7 @@ async function obtenerTipoCambio(moneda) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   await initAjustes();
+  state.accountMovements = await db.movimientos.toArray();
   document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
