@@ -196,6 +196,53 @@ db.on('changes', changes => {
 
 
 const app = document.getElementById("app");
+
+// ---------------- SPA Router -----------------
+// Normaliza la parte del hash quitando espacios y acentos
+function normalizeHash(hash) {
+  return (
+    '#' +
+    (hash || '')
+      .replace(/^#/, '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '')
+  );
+}
+
+// Vistas de ejemplo para cada sección del menú
+const SPA_VIEWS = {
+  '#dashboard': () => (app.innerHTML = '<h2>Dashboard</h2><p>Contenido de ejemplo</p>'),
+  '#inicio': () => (app.innerHTML = '<h2>Inicio</h2><p>Contenido de ejemplo</p>'),
+  '#activos': () => (app.innerHTML = '<h2>Activos</h2><p>Contenido de ejemplo</p>'),
+  '#transacciones': () => (app.innerHTML = '<h2>Transacciones</h2><p>Contenido de ejemplo</p>'),
+  '#cuentas': () => (app.innerHTML = '<h2>Cuentas</h2><p>Contenido de ejemplo</p>'),
+  '#deudas': () => (app.innerHTML = '<h2>Deudas</h2><p>Contenido de ejemplo</p>'),
+  '#tiposcambio': () => (app.innerHTML = '<h2>Tipos de cambio</h2><p>Contenido de ejemplo</p>'),
+  '#analisisvalue': () => (app.innerHTML = '<h2>Análisis Value</h2><p>Contenido de ejemplo</p>'),
+  '#glosario': () => (app.innerHTML = '<h2>Glosario</h2><p>Contenido de ejemplo</p>'),
+  '#info': () => (app.innerHTML = '<h2>Información</h2><p>Contenido de ejemplo</p>'),
+  '#ajustes': () => (app.innerHTML = '<h2>Ajustes</h2><p>Contenido de ejemplo</p>')
+};
+
+// Muestra la vista en función del hash actual
+function spaRouter() {
+  const key = normalizeHash(location.hash || '#inicio');
+  const view = SPA_VIEWS[key];
+  app.innerHTML = '';
+  if (view) {
+    view();
+  } else {
+    app.innerHTML = `<div class="card"><h2>Error</h2><p>Ruta desconocida: ${key}</p></div>`;
+  }
+  // Resalta el enlace activo del menú
+  document.querySelectorAll('#sidebar a').forEach(a => {
+    const href = normalizeHash(a.getAttribute('href'));
+    a.classList.toggle('active', href === key);
+  });
+}
+
 const state = {
   accountMovements: [],
   interestRates: [],
@@ -3710,8 +3757,9 @@ function initDragAndDrop() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-    router();
-  window.addEventListener("hashchange", router);
+  // Inicia el router y escucha los cambios de hash
+  spaRouter();
+  window.addEventListener("hashchange", spaRouter);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
