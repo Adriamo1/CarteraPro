@@ -77,6 +77,9 @@ db.version(6).stores({
 db.version(7).stores({
   historialPatrimonio: "++id, fecha"
 });
+db.version(8).stores({
+  appdata: "key"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -102,8 +105,27 @@ const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
 }, {});
 
 let appState = null;
+let saveTimer = null;
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => guardarEstado(appState), 500);
+}
 
 async function cargarEstado() {
+  const stored = await db.appdata.get('app');
+  if (stored && stored.data) {
+    appState = stored.data;
+    const ops = [];
+    for (const name of STORE_NAMES) {
+      await db[name].clear();
+      if (appState[name] && appState[name].length) {
+        ops.push(db[name].bulkPut(appState[name]));
+      }
+    }
+    await Promise.all(ops);
+    return appState;
+  }
   const datos = {};
   for (const name of STORE_NAMES) {
     datos[name] = await db[name].toArray();
@@ -113,6 +135,7 @@ async function cargarEstado() {
     Object.assign(datos, JSON.parse(JSON.stringify(DEFAULT_DATA)));
   }
   appState = datos;
+  await db.appdata.put({ key: 'app', data: datos });
   return datos;
 }
 
@@ -123,6 +146,7 @@ async function guardarEstado(estado) {
   for (const name of STORE_NAMES) {
     if (data[name]) ops.push(db[name].bulkPut(data[name]));
   }
+  ops.push(db.appdata.put({ key: 'app', data }));
   await Promise.all(ops);
 }
 
@@ -134,7 +158,7 @@ async function actualizarEntidad(nombre, objeto) {
     if (idx >= 0) appState[nombre][idx] = { ...objeto, id };
     else appState[nombre].push({ ...objeto, id });
   }
-  await guardarEstado(appState);
+  scheduleSave();
   return id;
 }
 
@@ -144,7 +168,7 @@ async function borrarEntidad(nombre, id) {
   if (appState && appState[nombre]) {
     appState[nombre] = appState[nombre].filter(e => e.id !== id);
   }
-  await guardarEstado(appState);
+  scheduleSave();
 }
 
 db.on('changes', changes => {
@@ -167,6 +191,7 @@ db.on('changes', changes => {
     registrarHistoricoCartera();
     registrarHistorialPatrimonio();
   }
+  scheduleSave();
 });
 
 
