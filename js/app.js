@@ -140,7 +140,9 @@ async function borrarEntidad(nombre, id) {
 db.on('changes', changes => {
   if (!appState) return;
   for (const ch of changes) {
-    const name = ch.table;
+    let name = ch.table;
+    if (name === 'deudaMovimientos') name = 'movimientosDeuda';
+    if (name === 'prestamos') name = 'deudas';
     if (!appState[name]) continue;
     if (ch.type === 1 || ch.type === 'create') {
       appState[name].push({ ...(ch.obj || {}), id: ch.key });
@@ -536,6 +538,20 @@ async function totalDividendos() {
     .reduce((s,i)=>s+(+i.importe||0),0);
 }
 
+async function totalDeudaPendiente() {
+  const deudas = await db.deudas.toArray();
+  let total = 0;
+  for (const d of deudas) total += await calcularSaldoPendiente(d);
+  return total;
+}
+
+async function totalInteresesPagadosDeuda() {
+  const movs = await db.movimientosDeuda.toArray();
+  return movs
+    .filter(m => m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión')
+    .reduce((s,m)=>s+(+m.importe||0),0);
+}
+
 async function registrarHistoricoCartera() {
   const { valorTotal } = await calcularKpis();
   const cuentas = await db.cuentas.toArray();
@@ -612,9 +628,12 @@ async function renderDashboard() {
   const dividendos = await totalDividendos();
   const brokerRes = await resumenPorBroker();
   const mayor = await activoMayorValor();
+  const deudaPendiente = await totalDeudaPendiente();
+  const interesPagado = await totalInteresesPagadosDeuda();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   const roi = costeTotal ? (rentTotal / costeTotal) * 100 : 0;
+  const ratioDeuda = valorTotal ? (deudaPendiente / valorTotal) * 100 : 0;
   const objetivo = getObjetivoRentabilidad();
   const cumplido = roi >= objetivo && objetivo > 0;
   const brokerHtml = Object.entries(brokerRes)
@@ -696,6 +715,27 @@ async function renderDashboard() {
         <div>
           <div>Dividendos cobrados</div>
           <div class="kpi-value">${formatCurrency(dividendos)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🏦</div>
+        <div>
+          <div>Deuda pendiente</div>
+          <div class="kpi-value">${formatCurrency(deudaPendiente)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💸</div>
+        <div>
+          <div>Intereses pagados</div>
+          <div class="kpi-value">${formatCurrency(interesPagado)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">%🏦</div>
+        <div>
+          <div>Deuda / patrimonio</div>
+          <div class="kpi-value">${ratioDeuda.toFixed(2)}%</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -1782,12 +1822,24 @@ async function importarJSON(file) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
-    if (!data.assets || !data.transactions || !data.settings) {
+    if (!data || typeof data !== 'object') {
+      alert('Archivo inválido');
+      return false;
+    }
+    if (data.deudaMovimientos && !data.movimientosDeuda) {
+      data.movimientosDeuda = data.deudaMovimientos;
+    }
+    if (data.prestamos && !data.deudas) {
+      data.deudas = data.prestamos;
+    }
+    if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
+        !data.settings || !Array.isArray(data.deudas) ||
+        !Array.isArray(data.movimientosDeuda)) {
       alert('Archivo incompleto');
       return false;
     }
     for (const name of STORE_NAMES) {
-      if (data[name]) {
+      if (Array.isArray(data[name])) {
         await db[name].clear();
         if (data[name].length) await db[name].bulkAdd(data[name]);
       }
@@ -2441,6 +2493,7 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     const data = Object.fromEntries(fd.entries());
     data.deudaId = Number(data.deudaId);
     data.importe = parseFloat(data.importe);
+    if (!data.fecha || isNaN(new Date(data.fecha).getTime())) { alert('Fecha inválida'); return; }
     if (isNaN(data.importe) || data.importe <= 0) { alert('Importe inválido'); return; }
     const id = form.dataset.id;
     if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
