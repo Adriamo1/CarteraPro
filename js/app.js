@@ -354,6 +354,9 @@ function getTipoCambio() {
   return parseFloat(getUserSetting("tipo_cambio") || 1);
 }
 
+// Objeto central de rutas. Cada hash se asocia a la función
+// encargada de renderizar la vista correspondiente. Añade o
+// modifica aquí las secciones para que el router las reconozca.
 const vistas = {
   "#inicio": renderResumen,
   "#dashboard": renderDashboard,
@@ -370,6 +373,17 @@ const vistas = {
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
 };
+
+// Normaliza el hash recibido eliminando acentos y espacios y
+// haciendo que la navegación sea case-insensitive
+function normalizarHash(hash) {
+  if (!hash) return "#inicio";
+  let limpio = decodeURIComponent(hash.trim()).toLowerCase();
+  limpio = limpio.replace(/^#+/, "");
+  limpio = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  limpio = limpio.replace(/\s+/g, "");
+  return "#" + limpio;
+}
 
 async function calcularKpis() {
   const [activos, trans, cuentas] = await Promise.all([
@@ -884,16 +898,17 @@ async function activoMayorValor() {
 }
 
 function router() {
-  const hash = location.hash || "#inicio";
+  const raw = location.hash || "#inicio";
+  const hash = normalizarHash(raw);
   const render = vistas[hash];
   app.innerHTML = "";
   if (render) {
     render();
   } else {
-    app.innerHTML = `<div class="card"><h2>Error</h2><p>Ruta desconocida: ${hash}</p></div>`;
+    app.innerHTML = `<div class="card"><h2>404 - Secci&oacute;n no encontrada</h2></div>`;
   }
   document.querySelectorAll("aside a").forEach(a => {
-    a.classList.toggle("active", a.getAttribute("href") === hash);
+    a.classList.toggle("active", normalizarHash(a.getAttribute("href")) === hash);
   });
 }
 
