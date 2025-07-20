@@ -1,14 +1,14 @@
 // app.js sin módulos, todo local
 // Definición principal de la base de datos usando Dexie
-const db = new Dexie('carteraPRO');
+const db = new Dexie('cartera-pro');
 db.version(1).stores({
-  activos: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
-  transacciones: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
   movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
   cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
   tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
-  gastos: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
-  ingresos: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
   suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
   bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
   prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
@@ -17,12 +17,113 @@ db.version(1).stores({
   carteras: "++id, nombre, descripcion, propietario, activos",
   documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
   logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
-  tiposCambio: "++id, moneda, tasa, fecha",
+  exchangeRates: "++id, moneda, tasa, fecha",
   interestRates: "++id, fecha, tin",
-  ajustes: "clave, valor"
+  settings: "clave, valor"
 });
+db.version(2).stores({
+  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
+  cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
+  tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
+  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
+  bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
+  prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
+  seguros: "++id, bienId, tipo, prima, inicio, vencimiento, notas",
+  historico: "fecha, valorTotal, saldoCuentas, saveback, resumenPorActivo, resumenPorBien, tiposCambio",
+  carteras: "++id, nombre, descripcion, propietario, activos",
+  documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
+  logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
+  exchangeRates: "++id, moneda, tasa, fecha",
+  interestRates: "++id, fecha, tin",
+  settings: "clave, valor",
+  backups: "++id, fecha"
+});
+db.activos = db.assets;
+db.transacciones = db.transactions;
+db.gastos = db.expenses;
+db.ingresos = db.income;
+db.tiposCambio = db.exchangeRates;
+db.ajustes = db.settings;
 // Para compatibilidad con versiones anteriores
 window.db = db;
+
+const STORE_NAMES = [
+  'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
+  'expenses', 'income', 'suscripciones', 'bienes', 'prestamos', 'seguros',
+  'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
+  'interestRates', 'settings', 'backups'
+];
+
+const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
+  obj[name] = [];
+  return obj;
+}, {});
+
+let appState = null;
+
+async function cargarEstado() {
+  const datos = {};
+  for (const name of STORE_NAMES) {
+    datos[name] = await db[name].toArray();
+  }
+  if (Object.values(datos).every(arr => arr.length === 0)) {
+    await guardarEstado(DEFAULT_DATA);
+    Object.assign(datos, JSON.parse(JSON.stringify(DEFAULT_DATA)));
+  }
+  appState = datos;
+  return datos;
+}
+
+async function guardarEstado(estado) {
+  const data = estado || appState;
+  if (!data) return;
+  const ops = [];
+  for (const name of STORE_NAMES) {
+    if (data[name]) ops.push(db[name].bulkPut(data[name]));
+  }
+  await Promise.all(ops);
+}
+
+async function actualizarEntidad(nombre, objeto) {
+  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
+  const id = await db[nombre].put(objeto);
+  if (appState && appState[nombre]) {
+    const idx = appState[nombre].findIndex(e => e.id === id);
+    if (idx >= 0) appState[nombre][idx] = { ...objeto, id };
+    else appState[nombre].push({ ...objeto, id });
+  }
+  await guardarEstado(appState);
+  return id;
+}
+
+async function borrarEntidad(nombre, id) {
+  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
+  await db[nombre].delete(id);
+  if (appState && appState[nombre]) {
+    appState[nombre] = appState[nombre].filter(e => e.id !== id);
+  }
+  await guardarEstado(appState);
+}
+
+db.on('changes', changes => {
+  if (!appState) return;
+  for (const ch of changes) {
+    const name = ch.table;
+    if (!appState[name]) continue;
+    if (ch.type === 1 || ch.type === 'create') {
+      appState[name].push({ ...(ch.obj || {}), id: ch.key });
+    } else if (ch.type === 2 || ch.type === 'update') {
+      const idx = appState[name].findIndex(e => e.id === ch.key);
+      if (idx >= 0) Object.assign(appState[name][idx], ch.obj || ch.mods || {});
+    } else if (ch.type === 3 || ch.type === 'delete') {
+      appState[name] = appState[name].filter(e => e.id !== ch.key);
+    }
+  }
+});
 
 
 const app = document.getElementById("app");
@@ -518,7 +619,7 @@ async function renderActivos() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
-    db.activos.add(data).then(renderActivos);
+    actualizarEntidad('assets', data).then(renderActivos);
   };
 
   document.getElementById("exportar-activos").onclick = async () => {
@@ -549,7 +650,7 @@ async function renderActivos() {
         const row = btn.closest('tr');
         mostrarConfirmacion('¿Eliminar este activo?', async () => {
           await db.transacciones.where('activoId').equals(id).delete();
-          await db.activos.delete(id);
+          await borrarEntidad('assets', id);
           row.remove();
         });
       };
@@ -658,7 +759,7 @@ function renderTransacciones() {
           const id = Number(btn.dataset.id);
           const row = btn.closest('tr');
           mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
-            await db.transacciones.delete(id);
+            await borrarEntidad('transactions', id);
             row.remove();
           });
         };
@@ -727,15 +828,19 @@ async function renderCuentas() {
   } else {
       for (const c of cuentas) {
         const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
-        const filas = movs.map(m => `<tr>
+        const filas = movs.map(m => `<tr data-id="${m.id}">
             <td data-label="Fecha">${m.fecha}</td>
             <td data-label="Importe">${formatCurrency(m.importe)}</td>
             <td data-label="Concepto" class="col-ocultar">${m.descripcion||''}</td>
+            <td>
+              <button class="btn btn-small edit-mov" data-id="${m.id}">✏️</button>
+              <button class="btn btn-small del-mov" data-id="${m.id}">🗑️</button>
+            </td>
           </tr>`).join('');
         const interes = (c.saldo || 0) * 0.01;
         html += `<section class="detalle">
           <h3>${c.nombre}</h3>
-          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th><th></th></tr></thead><tbody>${filas}</tbody></table>
           <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
         </section>`;
       }
@@ -751,6 +856,35 @@ async function renderCuentas() {
   document.getElementById('add-mov').onclick = () => {
     mostrarModalMovimiento(cuentas);
   };
+
+  function attachMovHandlers() {
+    document.querySelectorAll('.edit-mov').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const mov = await db.movimientos.get(id);
+        if (mov) mostrarModalMovimiento(cuentas, mov);
+      };
+    });
+    document.querySelectorAll('.del-mov').forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.id);
+        const row = btn.closest('tr');
+        mostrarConfirmacion('¿Eliminar este movimiento?', async () => {
+          const mov = await db.movimientos.get(id);
+          await borrarEntidad('movimientos', id);
+          if (mov) {
+            const c = await db.cuentas.get(mov.cuentaId);
+            await db.cuentas.update(mov.cuentaId, { saldo: (+c.saldo || 0) - mov.importe });
+          }
+          row.remove();
+          renderCuentas();
+          if (location.hash === '#dashboard') renderDashboard();
+        });
+      };
+    });
+  }
+
+  attachMovHandlers();
 
   document.getElementById('form-cuenta').onsubmit = e => {
     e.preventDefault();
@@ -1009,8 +1143,21 @@ function renderAjustes() {
         <div id="ajustes-msg" class="form-msg"></div>
       </form>
       <section>
-        <h3>Exportar datos</h3>
-        <button id="btn-exportar-datos" class="btn">Exportar Backup</button>
+        <h3>Gestión de Datos</h3>
+        <p>
+          <button id="btn-exp-json" class="btn">💾 Exportar JSON</button>
+          <input type="file" id="inp-json" accept="application/json" hidden>
+          <button id="btn-imp-json" class="btn">📤 Importar JSON</button>
+        </p>
+        <p>
+          <select id="sel-csv-kind">
+            <option value="transactions">Transacciones</option>
+            <option value="accountMovements">Cuenta remunerada</option>
+          </select>
+          <button id="btn-exp-csv" class="btn">⬇️ Exportar CSV</button>
+          <input type="file" id="inp-csv" accept=".csv" hidden>
+          <button id="btn-imp-csv" class="btn">📥 Importar CSV</button>
+        </p>
       </section>
     </div>`;
 
@@ -1053,8 +1200,25 @@ function renderAjustes() {
     }
   });
 
-  const btnExp = document.getElementById('btn-exportar-datos');
-  if (btnExp) btnExp.onclick = exportarBackup;
+  const btnExpJ = document.getElementById('btn-exp-json');
+  const btnImpJ = document.getElementById('btn-imp-json');
+  const inpJ = document.getElementById('inp-json');
+  const btnExpC = document.getElementById('btn-exp-csv');
+  const btnImpC = document.getElementById('btn-imp-csv');
+  const inpC = document.getElementById('inp-csv');
+  const selCsv = document.getElementById('sel-csv-kind');
+  if (btnExpJ) btnExpJ.onclick = exportarJSON;
+  if (btnImpJ) btnImpJ.onclick = () => inpJ.click();
+  if (inpJ) inpJ.onchange = () => {
+    if (inpJ.files[0]) importarJSON(inpJ.files[0]);
+    inpJ.value = '';
+  };
+  if (btnExpC) btnExpC.onclick = () => exportarCSVTipo(selCsv.value);
+  if (btnImpC) btnImpC.onclick = () => inpC.click();
+  if (inpC) inpC.onchange = () => {
+    if (inpC.files[0]) importarCSV(inpC.files[0], selCsv.value);
+    inpC.value = '';
+  };
 }
 
 async function renderInfo() {
@@ -1278,10 +1442,138 @@ function parseCSV(text) {
   });
 }
 
+async function exportarJSON() {
+  if (!appState) await cargarEstado();
+  const filename = `cartera-pro-datos-${new Date().toISOString().slice(0,10)}.json`;
+  const blob = new Blob([JSON.stringify(appState)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+async function importarJSON(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.assets || !data.transactions || !data.settings) {
+      alert('Archivo incompleto');
+      return false;
+    }
+    for (const name of STORE_NAMES) {
+      if (data[name]) {
+        await db[name].clear();
+        if (data[name].length) await db[name].bulkAdd(data[name]);
+      }
+    }
+    appState = JSON.parse(JSON.stringify(data));
+    alert('Datos importados');
+    return true;
+  } catch (e) {
+    alert('Error al importar: ' + e.message);
+    return false;
+  }
+}
+
+async function exportarCSVTipo(tipo) {
+  const datos = [];
+  if (tipo === 'transactions') {
+    const trans = appState ? appState.transactions : await db.transactions.toArray();
+    const assets = appState ? appState.assets : await db.assets.toArray();
+    const mapa = {};
+    assets.forEach(a => mapa[a.id] = a.ticker || '');
+    trans.forEach(t => datos.push({
+      assetId: t.activoId,
+      assetTicker: mapa[t.activoId] || '',
+      date: t.fecha,
+      type: t.tipo,
+      quantity: t.cantidad,
+      pricePerUnit: t.precio,
+      commission: t.comision,
+      broker: t.broker
+    }));
+    exportarCSV(datos, 'transacciones.csv');
+  } else if (tipo === 'accountMovements') {
+    const movs = appState ? appState.movimientos : await db.movimientos.toArray();
+    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
+    const mapa = {};
+    cuentas.forEach(c => mapa[c.id] = c.banco || '');
+    movs.forEach(m => datos.push({
+      date: m.fecha,
+      type: m.tipo,
+      bank: mapa[m.cuentaId] || '',
+      amount: m.importe,
+      notes: m.descripcion || m.notas || ''
+    }));
+    exportarCSV(datos, 'movimientos.csv');
+  }
+}
+
+async function importarCSV(file, tipo) {
+  const text = await file.text();
+  const rows = parseCSV(text);
+  if (!rows.length) return;
+  if (tipo === 'transactions') {
+    const assets = appState ? appState.assets : await db.assets.toArray();
+    const mapaTicker = {};
+    assets.forEach(a => mapaTicker[(a.ticker || '').toUpperCase()] = a.id);
+    for (const r of rows) {
+      if (!r.date && !r.fecha) continue;
+      const id = parseInt(r.id || r.ID);
+      if (id && await db.transactions.get(id)) continue;
+      let actId = parseInt(r.assetId || r.activoId || 0);
+      const tkr = (r.assetTicker || r.ticker || '').toUpperCase();
+      if (!actId && tkr) actId = mapaTicker[tkr];
+      if (!actId && tkr) {
+        actId = await db.assets.add({ nombre: tkr, ticker: tkr, tipo: '', moneda: 'EUR' });
+        mapaTicker[tkr] = actId;
+      }
+      if (!actId) continue;
+      const obj = {
+        activoId: actId,
+        fecha: r.date || r.fecha,
+        tipo: r.type || r.tipo,
+        cantidad: parseFloat(r.quantity || r.cantidad || 0),
+        precio: parseFloat(r.pricePerUnit || r.precio || 0),
+        comision: parseFloat(r.commission || r.comision || 0),
+        broker: r.broker || ''
+      };
+      await db.transactions.add(obj);
+    }
+  } else if (tipo === 'accountMovements') {
+    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
+    const mapaBanco = {};
+    cuentas.forEach(c => mapaBanco[(c.banco || '').toUpperCase()] = c.id);
+    for (const r of rows) {
+      const id = parseInt(r.id || r.ID);
+      if (id && await db.movimientos.get(id)) continue;
+      let cId = mapaBanco[(r.bank || '').toUpperCase()];
+      if (!cId && r.bank) {
+        cId = await db.cuentas.add({ banco: r.bank, alias: r.bank, saldo: 0, tipo: 'corriente' });
+        mapaBanco[(r.bank || '').toUpperCase()] = cId;
+      }
+      if (!cId) continue;
+      const obj = {
+        fecha: r.date || r.fecha,
+        tipo: r.type || r.tipo,
+        cuentaId: cId,
+        importe: parseFloat(r.amount || r.importe || 0),
+        descripcion: r.notes || r.descripcion || ''
+      };
+      await db.movimientos.add(obj);
+    }
+  }
+  await cargarEstado();
+}
+
 async function exportarBackup() {
   const backup = {};
-  for (const tabla of db.tables) {
-    backup[tabla.name] = await tabla.toArray();
+  if (appState) {
+    Object.assign(backup, appState);
+  } else {
+    for (const tabla of db.tables) {
+      backup[tabla.name] = await tabla.toArray();
+    }
   }
   const filename = `CarteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
   const blob = new Blob([JSON.stringify(backup)], {
@@ -1309,6 +1601,7 @@ async function importarBackupDesdeArchivo(file) {
         }
       }
     }
+    appState = JSON.parse(JSON.stringify(data));
     alert('Copia restaurada correctamente');
     return true;
   } catch (e) {
@@ -1429,7 +1722,7 @@ function mostrarModalEditarActivo(activo) {
     const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
     const id = Number(form.dataset.id);
-    await db.activos.update(id, data);
+    await actualizarEntidad('assets', { ...data, id });
     actualizarFilaActivo(id, data);
     modal.classList.add('hidden');
   };
@@ -1494,49 +1787,83 @@ function crearModalMovimiento() {
   document.body.appendChild(div);
 }
 
-async function mostrarModalMovimiento(cuentas) {
+async function mostrarModalMovimiento(cuentas, mov) {
   crearModalMovimiento();
   const modal = document.getElementById('mov-modal');
+  const form = document.getElementById('form-mov');
   const lista = document.getElementById('sel-cuenta');
   lista.innerHTML = cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+  if (mov) {
+    modal.querySelector('h3').textContent = 'Editar movimiento';
+    form.cuentaId.value = mov.cuentaId;
+    form.fecha.value = mov.fecha || '';
+    form.importe.value = mov.importe;
+    form.tipo.value = mov.tipo;
+    form.descripcion.value = mov.descripcion || '';
+    form.dataset.id = mov.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nuevo movimiento';
+    form.reset();
+    form.dataset.id = '';
+  }
+
   modal.classList.remove('hidden');
 
   modal.querySelector('#cancel-mov').onclick = () => {
     modal.classList.add('hidden');
   };
 
-  modal.querySelector('#form-mov').onsubmit = async e => {
+  form.onsubmit = async e => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
     data.cuentaId = parseInt(data.cuentaId);
     data.importe = parseFloat(data.importe);
-    const cuenta = await db.cuentas.get(data.cuentaId);
-    const mov = {
-      cuentaId: data.cuentaId,
-      fecha: data.fecha,
-      importe: data.importe,
-      descripcion: data.descripcion || '',
-      tipo: data.tipo
-    };
-    const id = await db.movimientos.add(mov);
-    mov.id = id;
-    state.accountMovements.push(mov);
-    await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
 
-    if (data.tipo === 'Gasto Tarjeta') {
-      const porcentaje = getSavebackRate();
-      const importeSave = Math.abs(data.importe) * (porcentaje / 100);
-      const movSave = {
+    const id = form.dataset.id;
+    if (id) {
+      const anterior = await db.movimientos.get(Number(id));
+      await actualizarEntidad('movimientos', { ...data, id: Number(id) });
+      if (anterior) {
+        if (anterior.cuentaId === data.cuentaId) {
+          const c = await db.cuentas.get(data.cuentaId);
+          await db.cuentas.update(data.cuentaId, { saldo: (+c.saldo || 0) - anterior.importe + data.importe });
+        } else {
+          const cOld = await db.cuentas.get(anterior.cuentaId);
+          const cNew = await db.cuentas.get(data.cuentaId);
+          await db.cuentas.update(anterior.cuentaId, { saldo: (+cOld.saldo || 0) - anterior.importe });
+          await db.cuentas.update(data.cuentaId, { saldo: (+cNew.saldo || 0) + data.importe });
+        }
+      }
+    } else {
+      const cuenta = await db.cuentas.get(data.cuentaId);
+      const obj = {
         cuentaId: data.cuentaId,
         fecha: data.fecha,
-        importe: importeSave,
-        descripcion: 'Saveback pendiente',
-        tipo: 'Saveback pendiente'
+        importe: data.importe,
+        descripcion: data.descripcion || '',
+        tipo: data.tipo
       };
-      const id2 = await db.movimientos.add(movSave);
-      movSave.id = id2;
-      state.accountMovements.push(movSave);
+      const newId = await db.movimientos.add(obj);
+      obj.id = newId;
+      state.accountMovements.push(obj);
+      await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
+
+      if (data.tipo === 'Gasto Tarjeta') {
+        const porcentaje = getSavebackRate();
+        const importeSave = Math.abs(data.importe) * (porcentaje / 100);
+        const movSave = {
+          cuentaId: data.cuentaId,
+          fecha: data.fecha,
+          importe: importeSave,
+          descripcion: 'Saveback pendiente',
+          tipo: 'Saveback pendiente'
+        };
+        const id2 = await db.movimientos.add(movSave);
+        movSave.id = id2;
+        state.accountMovements.push(movSave);
+      }
     }
 
     modal.classList.add('hidden');
@@ -1655,7 +1982,8 @@ async function mostrarModalTransaccion(activos, trans) {
     data.precio = parseFloat(data.precio);
     data.comision = parseFloat(data.comision) || 0;
     const id = form.dataset.id;
-    const prom = id ? db.transacciones.update(Number(id), data) : db.transacciones.add(data);
+    const prom = id ? actualizarEntidad('transactions', { ...data, id: Number(id) })
+                    : actualizarEntidad('transactions', data);
     prom.then(() => {
       modal.classList.add('hidden');
       renderTransacciones();
@@ -1920,14 +2248,44 @@ async function obtenerTipoCambio(moneda) {
   return getTipoCambio();
 }
 
+function scheduleAutoBackup() {
+  setInterval(async () => {
+    if (!appState) await cargarEstado();
+    const fecha = new Date().toISOString();
+    try {
+      await db.backups.add({ fecha, data: JSON.stringify(appState) });
+      const all = await db.backups.orderBy('fecha').toArray();
+      if (all.length > 5) await db.backups.delete(all[0].id);
+    } catch {}
+  }, 6 * 60 * 60 * 1000);
+}
+
+function initDragAndDrop() {
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (f.name.toLowerCase().endsWith('.json')) {
+      if (confirm('Importar datos desde JSON?')) importarJSON(f);
+    } else if (f.name.toLowerCase().endsWith('.csv')) {
+      const tipo = prompt('Tipo de CSV (transactions/accountMovements)', 'transactions');
+      if (tipo) importarCSV(f, tipo);
+    }
+  });
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   if ('serviceWorker' in navigator) {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
   await initAjustes();
+  await cargarEstado();
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
+  initDragAndDrop();
+  scheduleAutoBackup();
   navegar();
   window.addEventListener("hashchange", navegar);
   if (localStorage.getItem('backupPendienteImportar')) {
