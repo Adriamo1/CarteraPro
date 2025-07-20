@@ -538,6 +538,20 @@ async function totalDividendos() {
     .reduce((s,i)=>s+(+i.importe||0),0);
 }
 
+async function totalDeudaPendiente() {
+  const deudas = await db.deudas.toArray();
+  let total = 0;
+  for (const d of deudas) total += await calcularSaldoPendiente(d);
+  return total;
+}
+
+async function totalInteresesPagadosDeuda() {
+  const movs = await db.movimientosDeuda.toArray();
+  return movs
+    .filter(m => m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión')
+    .reduce((s,m)=>s+(+m.importe||0),0);
+}
+
 async function registrarHistoricoCartera() {
   const { valorTotal } = await calcularKpis();
   const cuentas = await db.cuentas.toArray();
@@ -614,9 +628,12 @@ async function renderDashboard() {
   const dividendos = await totalDividendos();
   const brokerRes = await resumenPorBroker();
   const mayor = await activoMayorValor();
+  const deudaPendiente = await totalDeudaPendiente();
+  const interesPagado = await totalInteresesPagadosDeuda();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   const roi = costeTotal ? (rentTotal / costeTotal) * 100 : 0;
+  const ratioDeuda = valorTotal ? (deudaPendiente / valorTotal) * 100 : 0;
   const objetivo = getObjetivoRentabilidad();
   const cumplido = roi >= objetivo && objetivo > 0;
   const brokerHtml = Object.entries(brokerRes)
@@ -698,6 +715,27 @@ async function renderDashboard() {
         <div>
           <div>Dividendos cobrados</div>
           <div class="kpi-value">${formatCurrency(dividendos)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🏦</div>
+        <div>
+          <div>Deuda pendiente</div>
+          <div class="kpi-value">${formatCurrency(deudaPendiente)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💸</div>
+        <div>
+          <div>Intereses pagados</div>
+          <div class="kpi-value">${formatCurrency(interesPagado)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">%🏦</div>
+        <div>
+          <div>Deuda / patrimonio</div>
+          <div class="kpi-value">${ratioDeuda.toFixed(2)}%</div>
         </div>
       </div>
       <div class="kpi-card">
