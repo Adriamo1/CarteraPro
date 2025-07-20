@@ -58,7 +58,7 @@ async function initAjustes() {
 
 function saveUserSetting(key, value) {
   ajustesCache[key] = value;
-  db.ajustes.put({ clave: key, valor: JSON.stringify(value) });
+  return db.ajustes.put({ clave: key, valor: JSON.stringify(value) });
 }
 
 function getUserSetting(key) {
@@ -71,7 +71,7 @@ function getBrokers() {
     "MyInvestor", "Interactive Brokers"
   ];
 }
-function setBrokers(list) { saveUserSetting("brokers", list); }
+function setBrokers(list) { return saveUserSetting("brokers", list); }
 
 function getBancos() {
   return getUserSetting("bancos") || [
@@ -79,32 +79,32 @@ function getBancos() {
     "Openbank", "EVO", "Revolut"
   ];
 }
-function setBancos(list) { saveUserSetting("bancos", list); }
+function setBancos(list) { return saveUserSetting("bancos", list); }
 
 function setTema(tema) {
-  saveUserSetting("tema", tema);
   document.body.setAttribute("data-theme", tema);
+  return saveUserSetting("tema", tema);
 }
 function getTema() {
   return getUserSetting("tema") || "auto";
 }
 
 function setPrivacidad(val) {
-  saveUserSetting("privacidad", !!val);
+  return saveUserSetting("privacidad", !!val);
 }
 function getPrivacidad() {
   return getUserSetting("privacidad") === true;
 }
 
 function setIdioma(idioma) {
-  saveUserSetting("idioma", idioma);
+  return saveUserSetting("idioma", idioma);
 }
 function getIdioma() {
   return getUserSetting("idioma") || "es";
 }
 
 function setVista(seccion, modo) {
-  saveUserSetting("vista_" + seccion, modo);
+  return saveUserSetting("vista_" + seccion, modo);
 }
 
 function getVista(seccion) {
@@ -112,7 +112,7 @@ function getVista(seccion) {
 }
 
 function setObjetivoRentabilidad(v) {
-  saveUserSetting("objetivo_rent", parseFloat(v) || 0);
+  return saveUserSetting("objetivo_rent", parseFloat(v) || 0);
 }
 
 function getObjetivoRentabilidad() {
@@ -120,7 +120,7 @@ function getObjetivoRentabilidad() {
 }
 
 function setSavebackRate(v) {
-  saveUserSetting("saveback", parseFloat(v) || 1);
+  return saveUserSetting("saveback", parseFloat(v) || 1);
 }
 
 function getSavebackRate() {
@@ -128,7 +128,7 @@ function getSavebackRate() {
 }
 
 function setApiKeyAv(key) {
-  saveUserSetting("api_key_av", key || "");
+  return saveUserSetting("api_key_av", key || "");
 }
 
 function getApiKeyAv() {
@@ -136,7 +136,7 @@ function getApiKeyAv() {
 }
 
 function setTipoCambio(valor) {
-  saveUserSetting("tipo_cambio", parseFloat(valor) || 1);
+  return saveUserSetting("tipo_cambio", parseFloat(valor) || 1);
 }
 
 function getTipoCambio() {
@@ -760,129 +760,98 @@ function renderAjustes() {
   app.innerHTML = `
     <div class="card" id="view-settings">
       <h2>Ajustes</h2>
-      <p class="mini-explica">Configura la aplicación: idioma, tema, objetivos y tus listas habituales.</p>
-
-      <section>
-        <h3>Idioma</h3>
-        <select id="language-select">
-          <option value="es" ${idioma === 'es' ? 'selected' : ''}>Español</option>
-          <option value="en" ${idioma === 'en' ? 'selected' : ''}>English</option>
-          <option value="fr" ${idioma === 'fr' ? 'selected' : ''}>Français</option>
-          <option value="it" ${idioma === 'it' ? 'selected' : ''}>Italiano</option>
-        </select>
-        <button id="btn-save-idioma" class="btn">Guardar idioma</button>
-      </section>
-
-      <section>
-        <h3>Tema</h3>
-        <select id="theme-select">
-          <option value="auto" ${tema === 'auto' ? 'selected' : ''}>Sistema</option>
-          <option value="light" ${tema === 'light' ? 'selected' : ''}>Claro</option>
-          <option value="dark" ${tema === 'dark' ? 'selected' : ''}>Oscuro</option>
-        </select>
-        <button id="btn-save-tema" class="btn">Guardar tema</button>
-      </section>
-
-      <section>
-        <h3>Objetivo anual de rentabilidad (%)</h3>
-        <input type="number" id="profit-goal" step="any" value="${objetivo}">
-        <button id="btn-save-profit" class="btn">Guardar objetivo</button>
-      </section>
-
-      <section>
-        <h3>Brokers</h3>
-        <textarea id="brokers-list" rows="4" style="width:100%;">${brokers.join('\n')}</textarea>
-        <button id="btn-save-brokers" class="btn">Guardar brokers</button>
-      </section>
-
-      <section>
-        <h3>Bancos</h3>
-        <textarea id="banks-list" rows="4" style="width:100%;">${bancos.join('\n')}</textarea>
-        <button id="btn-save-bancos" class="btn">Guardar bancos</button>
-      </section>
-
-      <section>
-        <h3>Saveback %</h3>
-        <input type="number" id="saveback-rate" step="any" value="${saveRate}">
-        <button id="btn-save-saveback" class="btn">Guardar Saveback</button>
-      </section>
-
-      <section>
-        <h3>Tipo de cambio base</h3>
-        <input type="number" id="tipo-cambio" step="any" value="${tipoCambio}">
-        <button id="btn-save-tc" class="btn">Guardar tipo de cambio</button>
-      </section>
-
-      <section>
-        <h3>API Key Alpha Vantage</h3>
-        <input id="api-key-av" type="text" value="${apiKey}">
-        <button id="btn-save-api" class="btn">Guardar clave</button>
-      </section>
-
-      <section>
-        <h3>Modo privacidad</h3>
-        <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''}/> Ocultar cantidades</label>
-        <button id="btn-save-privacidad" class="btn">Guardar privacidad</button>
-      </section>
+      <form id="form-ajustes" class="settings-form">
+        <div class="form-group">
+          <label for="language-select">Idioma</label>
+          <select id="language-select">
+            <option value="es" ${idioma === 'es' ? 'selected' : ''}>Español</option>
+            <option value="en" ${idioma === 'en' ? 'selected' : ''}>English</option>
+            <option value="fr" ${idioma === 'fr' ? 'selected' : ''}>Français</option>
+            <option value="it" ${idioma === 'it' ? 'selected' : ''}>Italiano</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="theme-select">Tema</label>
+          <select id="theme-select">
+            <option value="auto" ${tema === 'auto' ? 'selected' : ''}>Sistema</option>
+            <option value="light" ${tema === 'light' ? 'selected' : ''}>Claro</option>
+            <option value="dark" ${tema === 'dark' ? 'selected' : ''}>Oscuro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="profit-goal">Objetivo anual de rentabilidad (%)</label>
+          <input type="number" id="profit-goal" step="any" value="${objetivo}">
+        </div>
+        <div class="form-group">
+          <label for="saveback-rate">Saveback %</label>
+          <input type="number" id="saveback-rate" step="any" value="${saveRate}">
+        </div>
+        <div class="form-group">
+          <label for="tipo-cambio">Tipo de cambio base</label>
+          <input type="number" id="tipo-cambio" step="any" value="${tipoCambio}">
+        </div>
+        <div class="form-group">
+          <label for="api-key-av">API Key Alpha Vantage</label>
+          <input id="api-key-av" type="text" value="${apiKey}">
+        </div>
+        <div class="form-group">
+          <label for="brokers-list">Brokers</label>
+          <textarea id="brokers-list" rows="3">${brokers.join('\n')}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="banks-list">Bancos</label>
+          <textarea id="banks-list" rows="3">${bancos.join('\n')}</textarea>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''}/> Modo privacidad</label>
+        </div>
+        <button class="btn" type="submit">Guardar ajustes</button>
+        <div id="ajustes-msg" class="form-msg"></div>
+      </form>
       <section>
         <h3>Exportar datos</h3>
         <button id="btn-exportar-datos" class="btn">Exportar Backup</button>
       </section>
     </div>`;
 
-  document.getElementById('btn-save-brokers').onclick = () => {
-    const nuevos = document.getElementById('brokers-list').value.split('\n').map(s => s.trim()).filter(Boolean);
-    setBrokers(nuevos);
-    alert('Brokers guardados.');
-  };
-
-  document.getElementById('btn-save-bancos').onclick = () => {
-    const nuevos = document.getElementById('banks-list').value.split('\n').map(s => s.trim()).filter(Boolean);
-    setBancos(nuevos);
-    alert('Bancos guardados.');
-  };
-
-  document.getElementById('btn-save-tema').onclick = () => {
-    const nuevoTema = document.getElementById('theme-select').value;
-    setTema(nuevoTema);
-    alert('Tema guardado. Recarga la página si no se aplica automáticamente.');
-  };
-
-  document.getElementById('btn-save-idioma').onclick = () => {
-    const nuevoIdioma = document.getElementById('language-select').value;
-    setIdioma(nuevoIdioma);
-    alert('Idioma guardado.');
-  };
-
-  document.getElementById('btn-save-profit').onclick = () => {
-    const val = document.getElementById('profit-goal').value;
-    setObjetivoRentabilidad(val);
-    alert('Objetivo guardado');
-  };
-
-  document.getElementById('btn-save-saveback').onclick = () => {
-    const val = document.getElementById('saveback-rate').value;
-    setSavebackRate(val);
-    alert('Saveback guardado');
-  };
-
-  document.getElementById('btn-save-tc').onclick = () => {
-    const val = document.getElementById('tipo-cambio').value;
-    setTipoCambio(val);
-    alert('Tipo de cambio guardado');
-  };
-
-  document.getElementById('btn-save-api').onclick = () => {
-    const val = document.getElementById('api-key-av').value.trim();
-    setApiKeyAv(val);
-    alert('Clave guardada');
-  };
-
-  document.getElementById('btn-save-privacidad').onclick = () => {
-    const activo = document.getElementById('chk-privacidad').checked;
-    setPrivacidad(activo);
-    alert('Preferencia de privacidad guardada.');
-  };
+  const form = document.getElementById('form-ajustes');
+  const msg = document.getElementById('ajustes-msg');
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msg.textContent = '';
+    msg.className = 'form-msg';
+    form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+    const objetivoVal = parseFloat(document.getElementById('profit-goal').value);
+    const saveVal = parseFloat(document.getElementById('saveback-rate').value);
+    const tcVal = parseFloat(document.getElementById('tipo-cambio').value);
+    let valid = true;
+    if (isNaN(objetivoVal)) { document.getElementById('profit-goal').classList.add('input-error'); valid = false; }
+    if (isNaN(saveVal)) { document.getElementById('saveback-rate').classList.add('input-error'); valid = false; }
+    if (isNaN(tcVal)) { document.getElementById('tipo-cambio').classList.add('input-error'); valid = false; }
+    if (!valid) {
+      msg.textContent = 'Revisa los campos marcados.';
+      msg.classList.add('error');
+      return;
+    }
+    try {
+      await Promise.all([
+        setIdioma(document.getElementById('language-select').value),
+        setTema(document.getElementById('theme-select').value),
+        setObjetivoRentabilidad(objetivoVal),
+        setSavebackRate(saveVal),
+        setTipoCambio(tcVal),
+        setApiKeyAv(document.getElementById('api-key-av').value.trim()),
+        setBrokers(document.getElementById('brokers-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
+        setBancos(document.getElementById('banks-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
+        setPrivacidad(document.getElementById('chk-privacidad').checked)
+      ]);
+      msg.textContent = 'Ajustes guardados correctamente';
+      msg.classList.add('success');
+    } catch (err) {
+      msg.textContent = 'Error guardando ajustes';
+      msg.classList.add('error');
+    }
+  });
 
   const btnExp = document.getElementById('btn-exportar-datos');
   if (btnExp) btnExp.onclick = exportarBackup;
