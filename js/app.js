@@ -1905,18 +1905,14 @@ function renderAjustes() {
       <section>
         <h3>Gestión de Datos</h3>
         <p>
-          <button id="btn-exp-json" class="btn">💾 Exportar JSON</button>
+          <button id="btn-exp-json" class="btn">Exportar datos (JSON)</button>
           <input type="file" id="inp-json" accept="application/json" hidden>
-          <button id="btn-imp-json" class="btn">📤 Importar JSON</button>
+          <button id="btn-imp-json" class="btn">Importar datos (JSON)</button>
         </p>
         <p>
-          <select id="sel-csv-kind">
-            <option value="transactions">Transacciones</option>
-            <option value="accountMovements">Cuenta remunerada</option>
-          </select>
-          <button id="btn-exp-csv" class="btn">⬇️ Exportar CSV</button>
-          <input type="file" id="inp-csv" accept=".csv" hidden>
-          <button id="btn-imp-csv" class="btn">📥 Importar CSV</button>
+          <button id="btn-exp-trans" class="btn">Exportar CSV de transacciones</button>
+          <input type="file" id="inp-trans-csv" accept=".csv" hidden>
+          <button id="btn-imp-trans" class="btn">Importar CSV de transacciones</button>
         </p>
       </section>
     </div>`;
@@ -1965,21 +1961,20 @@ function renderAjustes() {
   const btnExpJ = document.getElementById('btn-exp-json');
   const btnImpJ = document.getElementById('btn-imp-json');
   const inpJ = document.getElementById('inp-json');
-  const btnExpC = document.getElementById('btn-exp-csv');
-  const btnImpC = document.getElementById('btn-imp-csv');
-  const inpC = document.getElementById('inp-csv');
-  const selCsv = document.getElementById('sel-csv-kind');
+  const btnExpTrans = document.getElementById('btn-exp-trans');
+  const btnImpTrans = document.getElementById('btn-imp-trans');
+  const inpTrans = document.getElementById('inp-trans-csv');
   if (btnExpJ) btnExpJ.onclick = exportarJSON;
   if (btnImpJ) btnImpJ.onclick = () => inpJ.click();
   if (inpJ) inpJ.onchange = () => {
     if (inpJ.files[0]) importarJSON(inpJ.files[0]);
     inpJ.value = '';
   };
-  if (btnExpC) btnExpC.onclick = () => exportarCSVTipo(selCsv.value);
-  if (btnImpC) btnImpC.onclick = () => inpC.click();
-  if (inpC) inpC.onchange = () => {
-    if (inpC.files[0]) importarCSV(inpC.files[0], selCsv.value);
-    inpC.value = '';
+  if (btnExpTrans) btnExpTrans.onclick = () => exportarCSVTipo('transactions');
+  if (btnImpTrans) btnImpTrans.onclick = () => inpTrans.click();
+  if (inpTrans) inpTrans.onchange = () => {
+    if (inpTrans.files[0]) importarCSV(inpTrans.files[0], 'transactions');
+    inpTrans.value = '';
   };
 }
 
@@ -2267,11 +2262,16 @@ async function renderGraficosDashboard() {
 // Exportar CSV
 function exportarCSV(array, filename) {
   if (!array.length) return alert("No hay datos.");
-  const encabezados = Object.keys(array[0]);
-  const csv = [
-    encabezados.join(";"),
-    ...array.map(row => encabezados.map(k => JSON.stringify(row[k] ?? "")).join(";"))
-  ].join("\\n");
+  let csv;
+  if (typeof Papa !== 'undefined') {
+    csv = Papa.unparse(array);
+  } else {
+    const encabezados = Object.keys(array[0]);
+    csv = [
+      encabezados.join(";"),
+      ...array.map(row => encabezados.map(k => JSON.stringify(row[k] ?? "")).join(";"))
+    ].join("\n");
+  }
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2280,13 +2280,17 @@ function exportarCSV(array, filename) {
 }
 
 function parseCSV(text) {
+  if (typeof Papa !== 'undefined') {
+    const res = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+    return Array.isArray(res.data) ? res.data : [];
+  }
   const rows = text.trim().split(/\r?\n/);
   if (!rows.length) return [];
   const headers = rows.shift().split(/[,;]\s*/).map(h => h.trim());
   return rows.filter(Boolean).map(line => {
     const cols = line.split(/[,;]\s*/);
     const obj = {};
-    headers.forEach((h,i)=> obj[h] = (cols[i] || '').trim());
+    headers.forEach((h, i) => (obj[h] = (cols[i] || '').trim()));
     return obj;
   });
 }
