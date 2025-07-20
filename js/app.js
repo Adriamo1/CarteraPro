@@ -68,6 +68,9 @@ db.version(3).stores({
 db.version(4).stores({
   portfolioHistory: "++id, fecha, valorTotal, saldoCuenta"
 });
+db.version(5).stores({
+  deudaHistory: "++id, deudaId, fecha, saldo"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -83,7 +86,7 @@ const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
   'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'movimientosDeuda', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings', 'backups', 'portfolioHistory'
+  'interestRates', 'settings', 'backups', 'portfolioHistory', 'deudaHistory'
 ];
 
 const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
@@ -164,6 +167,7 @@ const state = {
   accountMovements: [],
   interestRates: [],
   portfolioHistory: [],
+  deudaHistory: [],
   deudas: [],
   movimientosDeuda: [],
   settings: { lastExchangeUpdate: null }
@@ -610,6 +614,76 @@ async function registrarHistoricoCartera() {
       appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta });
     }
   }
+}
+
+async function registrarHistoricoDeuda(deudaId, fecha) {
+  const saldo = await calcularSaldoPendiente(deudaId);
+  const f = fecha || new Date().toISOString().slice(0,10);
+  const existe = await db.deudaHistory.where({ deudaId, fecha: f }).first();
+  if (existe) {
+    await db.deudaHistory.update(existe.id, { saldo });
+    if (appState && appState.deudaHistory) {
+      const idx = appState.deudaHistory.findIndex(h=>h.id===existe.id);
+      if (idx>=0) appState.deudaHistory[idx].saldo = saldo;
+    }
+  } else {
+    const id = await db.deudaHistory.add({ deudaId, fecha: f, saldo });
+    if (appState && appState.deudaHistory) {
+      appState.deudaHistory.push({ id, deudaId, fecha: f, saldo });
+    }
+  }
+}
+
+async function obtenerHistorialDeuda(deudaId) {
+  let hist = await db.deudaHistory.where('deudaId').equals(deudaId).sortBy('fecha');
+  if (!hist.length) {
+    const deuda = await db.deudas.get(deudaId);
+    if (!deuda) return [];
+    const movs = await db.movimientosDeuda.where('deudaId').equals(deudaId).toArray();
+    movs.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
+    let saldo = +deuda.capitalInicial || 0;
+    hist = [];
+    for (const m of movs) {
+      if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
+        saldo -= (+m.importe || 0);
+        const item = { deudaId, fecha: m.fecha, saldo };
+        hist.push(item);
+      }
+    }
+    if (hist.length) await db.deudaHistory.bulkAdd(hist);
+  }
+  return hist;
+}
+
+async function renderGraficoHistorialDeuda(id) {
+  if (!hasChart) return;
+  const hist = await obtenerHistorialDeuda(id);
+  if (!hist.length) return;
+  const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
+  movs.sort((a,b)=> new Date(a.fecha)-new Date(b.fecha));
+  const mapInt = {};
+  let total = 0;
+  for (const m of movs) {
+    if (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión') {
+      total += (+m.importe || 0);
+    }
+    if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
+      mapInt[m.fecha] = total;
+    }
+  }
+  const labels = hist.map(h=>h.fecha);
+  const saldos = hist.map(h=>h.saldo);
+  const intereses = hist.map(h=>mapInt[h.fecha] || 0);
+  const ctx = document.getElementById('grafico-saldo-deuda');
+  if (!ctx) return;
+  new Chart(ctx.getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Saldo', data:saldos, borderColor:'#3498db', tension:0.2},
+      {label:'Interés acumulado', data:intereses, borderColor:'#e67e22', tension:0.2}
+    ]},
+    options:{responsive:true}
+  });
 }
 
 // Agrupa activos por broker contando número y valor
@@ -1288,6 +1362,7 @@ async function renderDeudas() {
     const id = Number(b.dataset.id);
     mostrarConfirmacion('¿Eliminar esta deuda?', async () => {
       await db.movimientosDeuda.where('deudaId').equals(id).delete();
+      await db.deudaHistory.where('deudaId').equals(id).delete();
       await borrarEntidad('deudas', id);
       renderDeudas();
     });
@@ -1891,7 +1966,8 @@ async function importarJSON(file) {
     }
     if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
         !data.settings || !Array.isArray(data.deudas) ||
-        !Array.isArray(data.movimientosDeuda)) {
+        !Array.isArray(data.movimientosDeuda) ||
+        !Array.isArray(data.deudaHistory)) {
       alert('Archivo incompleto');
       return false;
     }
@@ -2555,6 +2631,9 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     const id = form.dataset.id;
     if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
     else await db.movimientosDeuda.add(data);
+    if (data.tipoMovimiento === 'Pago capital' || data.tipoMovimiento === 'Cancelación anticipada') {
+      await registrarHistoricoDeuda(data.deudaId, data.fecha);
+    }
     modal.classList.add('hidden');
     mostrarDetalleDeuda(data.deudaId);
     renderDeudas();
@@ -2665,6 +2744,7 @@ async function registrarCuotaAutomatica(id, fecha) {
     { deudaId: id, fecha: f, tipoMovimiento: 'Pago interés', importe: parseFloat(info.interes.toFixed(2)) },
     { deudaId: id, fecha: f, tipoMovimiento: 'Pago capital', importe: parseFloat(info.capital.toFixed(2)) }
   ]);
+  await registrarHistoricoDeuda(id, f);
 }
 
 async function mostrarDetalleDeuda(id) {
@@ -2696,6 +2776,7 @@ async function mostrarDetalleDeuda(id) {
       <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
       <button class="btn" id="reg-cuota">Registrar cuota</button>
       <button class="btn" id="sim-cuota">Simular cuota</button>
+      <canvas id="grafico-saldo-deuda" height="120"></canvas>
     </section>`;
   document.getElementById('add-mov-deuda').onclick = () => mostrarModalDeudaMovimiento(id);
   document.getElementById('reg-cuota').onclick = async () => {
@@ -2726,6 +2807,7 @@ async function mostrarDetalleDeuda(id) {
       renderDeudas();
     });
   });
+  renderGraficoHistorialDeuda(id);
 }
 
 // ----- Modal Análisis Value -----
@@ -3023,6 +3105,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.portfolioHistory = await db.portfolioHistory.toArray();
   state.deudas = await db.deudas.toArray();
   state.movimientosDeuda = await db.movimientosDeuda.toArray();
+  state.deudaHistory = await db.deudaHistory.toArray();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
