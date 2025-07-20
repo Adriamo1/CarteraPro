@@ -159,7 +159,7 @@ db.on('changes', changes => {
       appState[name] = appState[name].filter(e => e.id !== ch.key);
     }
   }
-  if (changes.some(c => ['assets','transactions','movimientos','cuentas'].includes(c.table))) {
+  if (changes.some(c => ['assets','transactions','movimientos','cuentas','deudas','deudaMovimientos'].includes(c.table))) {
     registrarHistoricoCartera();
   }
 });
@@ -386,6 +386,21 @@ async function calcularKpis() {
   return { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal };
 }
 
+async function calcularPatrimonioNeto() {
+  const [activos, cuentas, deudas] = await Promise.all([
+    db.activos.toArray(),
+    db.cuentas.where('tipo').equals('remunerada').toArray(),
+    db.deudas.toArray()
+  ]);
+  const valorActivos = activos.reduce((s, a) => s + (+a.valorActual || 0), 0);
+  const saldoCuentas = cuentas.reduce((s, c) => s + (+c.saldo || 0), 0);
+  const deudasVals = await Promise.all(deudas.map(d => calcularSaldoPendiente(d)));
+  const deudaPendiente = deudasVals.reduce((s, v) => s + v, 0);
+  const patrimonioNeto = valorActivos + saldoCuentas - deudaPendiente;
+  const ratioDeudaActivos = valorActivos ? (deudaPendiente / valorActivos) * 100 : 0;
+  return { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente, ratioDeudaActivos };
+}
+
 async function calcularInteresMes() {
   const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
   if (!cuentas.length) return 0;
@@ -606,16 +621,17 @@ async function analizarCosteDeudasVsCuenta() {
 
 async function registrarHistoricoCartera() {
   const { valorTotal } = await calcularKpis();
+  const { patrimonioNeto } = await calcularPatrimonioNeto();
   const cuentas = await db.cuentas.toArray();
   const saldoCuenta = cuentas.reduce((s,c)=>s+(+c.saldo||0),0);
   const fecha = new Date().toISOString().slice(0,10);
   const existente = await db.portfolioHistory.where('fecha').equals(fecha).first();
   if (existente) {
-    await db.portfolioHistory.update(existente.id, { valorTotal, saldoCuenta });
+    await db.portfolioHistory.update(existente.id, { valorTotal, saldoCuenta, patrimonioNeto });
   } else {
-    const id = await db.portfolioHistory.add({ fecha, valorTotal, saldoCuenta });
+    const id = await db.portfolioHistory.add({ fecha, valorTotal, saldoCuenta, patrimonioNeto });
     if (appState && appState.portfolioHistory) {
-      appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta });
+      appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta, patrimonioNeto });
     }
   }
 }
@@ -842,6 +858,12 @@ function renderResumen() {
 
 async function renderDashboard() {
   const { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal } = await calcularKpis();
+  const { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente, ratioDeudaActivos } = await calcularPatrimonioNeto();
+  const hist = await db.portfolioHistory.orderBy('fecha').reverse().limit(2).toArray();
+  let variacion = 0;
+  if (hist.length === 2) {
+    variacion = patrimonioNeto - (hist[1].patrimonioNeto || 0);
+  }
   const interesMes = await calcularInteresMes();
   const interesAnual = await calcularInteresAnual();
   const apy = await calcularApy();
@@ -851,12 +873,10 @@ async function renderDashboard() {
   const dividendos = await totalDividendos();
   const brokerRes = await resumenPorBroker();
   const mayor = await activoMayorValor();
-  const deudaPendiente = await totalDeudaPendiente();
   const interesPagado = await totalInteresesPagadosDeuda();
   const porTipoHtml = Object.entries(valorPorTipo)
-    .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
+    .map(([t, v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   const roi = costeTotal ? (rentTotal / costeTotal) * 100 : 0;
-  const ratioDeuda = valorTotal ? (deudaPendiente / valorTotal) * 100 : 0;
   const objetivo = getObjetivoRentabilidad();
   const cumplido = roi >= objetivo && objetivo > 0;
   const brokerHtml = Object.entries(brokerRes)
@@ -873,6 +893,27 @@ async function renderDashboard() {
     ${objetivo>0?`<div class="alert ${cumplido?'cumplido':'pendiente'}">${cumplido?'🎯 ¡Has alcanzado tu objetivo anual de rentabilidad! <button id="reset-obj" class="btn btn-small">Reiniciar</button>':'Objetivo a '+(objetivo-roi).toFixed(2)+' %'}</div>`:''}
     ${alertaAmort}
     <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon">💎</div>
+        <div>
+          <div>Patrimonio neto</div>
+          <div class="kpi-value ${patrimonioNeto>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(patrimonioNeto)} ${variacion>0?'⬆️':variacion<0?'⬇️':''}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📊</div>
+        <div>
+          <div>Valor activos</div>
+          <div class="kpi-value">${formatCurrency(valorActivos)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🏦</div>
+        <div>
+          <div>Cuentas remuneradas</div>
+          <div class="kpi-value">${formatCurrency(saldoCuentas)}</div>
+        </div>
+      </div>
       <div class="kpi-card">
         <div class="kpi-icon">💰</div>
         <div>
@@ -964,8 +1005,8 @@ async function renderDashboard() {
       <div class="kpi-card">
         <div class="kpi-icon">%🏦</div>
         <div>
-          <div>Deuda / patrimonio</div>
-          <div class="kpi-value">${ratioDeuda.toFixed(2)}%</div>
+          <div>Deuda / activos</div>
+          <div class="kpi-value">${ratioDeudaActivos.toFixed(2)}%</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -985,6 +1026,7 @@ async function renderDashboard() {
       </div>
     </div>
     <div class="card"><h3>P&L por activo <span class="help" title="Beneficio o pérdida"></span></h3><canvas id="grafico-pnl" height="160"></canvas></div>
+    <div class="card"><h3>Composición del patrimonio</h3><canvas id="grafico-patrimonio" height="160"></canvas></div>
     <div class="card"><h3>Saveback y TIN <span class="help" title="Ahorro para inversiones y tipo nominal"></span></h3><canvas id="grafico-saveback" height="160"></canvas></div>
     <div class="card"><h3>Asignación actual vs objetivo</h3><canvas id="grafico-asignacion" height="160"></canvas></div>
     <div class="card"><h3>Distribución por divisa</h3><canvas id="grafico-divisa" height="160"></canvas></div>
@@ -2016,6 +2058,10 @@ async function renderGraficosDashboard() {
   const tipo = await distribucionPorCampo('tipo');
   const ctxTipo = document.getElementById('grafico-tipo').getContext('2d');
   new Chart(ctxTipo, {type:'doughnut', data:{labels:tipo.labels, datasets:[{data:tipo.data}]}, options:{responsive:true}});
+
+  const pat = await calcularPatrimonioNeto();
+  const ctxPat = document.getElementById('grafico-patrimonio').getContext('2d');
+  new Chart(ctxPat, {type:'bar', data:{labels:['Activos','Cuenta','Deudas','Neto'], datasets:[{data:[pat.valorActivos, pat.saldoCuentas, -pat.deudaPendiente, pat.patrimonioNeto], backgroundColor:['#3498db','#3f8edc','#e57373','#2e7d32']}]}, options:{responsive:true, plugins:{legend:{display:false}}}});
 
   const evo = await datosEvolucionCartera();
   const ctxE = document.getElementById('grafico-evolucion').getContext('2d');
