@@ -3709,17 +3709,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
-  await initAjustes();
-  await cargarEstado();
-  state.exchangeRates = getUserSetting('exchangeRates') || {};
-  state.accountMovements = await db.movimientos.toArray();
-  state.interestRates = await db.interestRates.toArray();
-  state.portfolioHistory = await db.portfolioHistory.toArray();
-  state.deudas = await db.deudas.toArray();
-  state.movimientosDeuda = await db.movimientosDeuda.toArray();
-  state.deudaHistory = await db.deudaHistory.toArray();
-  state.historialPatrimonio = await db.historialPatrimonio.toArray();
-  await procesarPagosAutomaticos();
+  try {
+    await initAjustes();
+    await cargarEstado();
+    state.exchangeRates = getUserSetting('exchangeRates') || {};
+    state.accountMovements = await db.movimientos.toArray();
+    state.interestRates = await db.interestRates.toArray();
+    state.portfolioHistory = await db.portfolioHistory.toArray();
+    state.deudas = await db.deudas.toArray();
+    state.movimientosDeuda = await db.movimientosDeuda.toArray();
+    state.deudaHistory = await db.deudaHistory.toArray();
+    state.historialPatrimonio = await db.historialPatrimonio.toArray();
+    await procesarPagosAutomaticos();
+  } catch (e) {
+    console.log('Init error', e);
+  }
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
@@ -3730,5 +3734,5 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (localStorage.getItem('backupPendienteImportar')) {
     mostrarModalImportarBackup();
   }
-  checkForUpdates();
+  if (location.protocol !== 'file:') checkForUpdates();
 });
