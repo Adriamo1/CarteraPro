@@ -204,6 +204,7 @@ const state = {
   historialPatrimonio: [],
   deudas: [],
   movimientosDeuda: [],
+  exchangeRates: {},
   settings: { lastExchangeUpdate: null }
 };
 const hasChart = typeof Chart !== 'undefined';
@@ -1599,6 +1600,7 @@ function renderTiposCambio() {
       <h2>Tipos de cambio</h2>
       <div class="mini-explica" id="last-update-tc">Última actualización: ${state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A'}</div>
       <button id="refresh-tc" class="btn">Refrescar tasas</button>
+      <button id="simulate-tc" class="btn">Actualizar tipos de cambio</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
         <input name="tasa" type="number" step="any" placeholder="Tasa" required />
@@ -1622,17 +1624,35 @@ function renderTiposCambio() {
       const data = await fetchExchangeRates('https://api.exchangerate.host/latest?base=EUR');
       if (data && data.rates) {
         const fecha = data.date || new Date().toISOString().slice(0,10);
-        const registros = Object.entries(data.rates).map(([moneda, tasa]) => ({
-          moneda,
-          tasa: parseFloat(tasa),
-          fecha
-        }));
+        const registros = [];
+        for (const [moneda, tasa] of Object.entries(data.rates)) {
+          const valor = parseFloat(tasa);
+          state.exchangeRates[moneda] = valor;
+          registros.push({ moneda, tasa: valor, fecha });
+        }
         await db.tiposCambio.bulkAdd(registros);
+        saveUserSetting('exchangeRates', state.exchangeRates);
         alert('Tasas actualizadas');
         renderTiposCambio();
       } else {
         alert('No se pudieron obtener las tasas');
       }
+    };
+
+    document.getElementById('simulate-tc').onclick = async () => {
+      const base = { USD: 1.1, GBP: 0.85, JPY: 140 };
+      const fecha = new Date().toISOString().slice(0, 10);
+      const registros = [];
+      for (const [moneda, valor] of Object.entries(base)) {
+        const tasa = parseFloat((valor * (0.95 + Math.random() * 0.1)).toFixed(4));
+        state.exchangeRates[moneda] = tasa;
+        registros.push({ moneda, tasa, fecha });
+      }
+      state.settings.lastExchangeUpdate = new Date().toISOString();
+      await db.tiposCambio.bulkAdd(registros);
+      saveUserSetting('exchangeRates', state.exchangeRates);
+      alert('Tipos de cambio actualizados');
+      renderTiposCambio();
     };
   });
 }
@@ -3619,6 +3639,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   await initAjustes();
   await cargarEstado();
+  state.exchangeRates = getUserSetting('exchangeRates') || {};
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   state.portfolioHistory = await db.portfolioHistory.toArray();
