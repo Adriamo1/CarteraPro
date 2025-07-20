@@ -2047,14 +2047,8 @@ function renderAjustes() {
 async function renderInfo() {
   app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div><div id="info-debug"></div>`;
   try {
-    let local;
-    try {
-      const localResp = await fetch('version.json', { cache: 'no-store' });
-      local = await localResp.json();
-    } catch {
-      const el = document.getElementById('version-data');
-      local = el ? JSON.parse(el.textContent) : {};
-    }
+    const el = document.getElementById('version-data');
+    const local = el ? JSON.parse(el.textContent) : {};
     const fecha = local.date || '';
     const instalada = local.version || '';
     try {
@@ -2605,7 +2599,7 @@ function mostrarModalActualizacion(nuevaVersion) {
 async function proceedUpdate(nuevaVersion) {
   const modal = document.getElementById('update-modal');
   if (modal) modal.remove();
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     const reg = await navigator.serviceWorker.getRegistration();
     if (reg) {
       await reg.update();
@@ -3712,7 +3706,7 @@ function initDragAndDrop() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
   await initAjustes();
