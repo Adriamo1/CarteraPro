@@ -3758,8 +3758,8 @@ function initDragAndDrop() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   // Inicia el router y escucha los cambios de hash
-  spaRouter();
-  window.addEventListener("hashchange", spaRouter);
+  router();
+  window.addEventListener("hashchange", router);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
