@@ -913,10 +913,7 @@ async function checkForUpdates() {
     const data = await resp.json();
     const local = getUserSetting('version');
     if (local && local !== data.version) {
-      if (confirm(`Nueva versión ${data.version} disponible. ¿Recargar?`)) {
-        saveUserSetting('version', data.version);
-        location.reload(true);
-      }
+      mostrarModalActualizacion(data.version);
     } else {
       saveUserSetting('version', data.version);
     }
@@ -1260,13 +1257,109 @@ async function exportarBackup() {
   for (const tabla of db.tables) {
     backup[tabla.name] = await tabla.toArray();
   }
+  const filename = `CarteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
   const blob = new Blob([JSON.stringify(backup)], {
     type: 'application/json'
   });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `carteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
+  a.remove();
+  localStorage.setItem('backupPendienteImportar', 'true');
+}
+
+async function importarBackupDesdeArchivo(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    for (const tabla of db.tables) {
+      if (data[tabla.name]) {
+        await tabla.clear();
+        if (data[tabla.name].length) {
+          await tabla.bulkAdd(data[tabla.name]);
+        }
+      }
+    }
+    alert('Copia restaurada correctamente');
+    return true;
+  } catch (e) {
+    alert('Error al importar: ' + e.message);
+    return false;
+  }
+}
+
+function mostrarModalImportarBackup() {
+  if (document.getElementById('import-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'import-modal';
+  div.className = 'modal';
+  div.innerHTML = `
+    <div class="modal-content">
+      <p>¿Deseas importar la copia de seguridad que descargaste antes de actualizar? Puedes hacerlo ahora para restaurar tus datos anteriores.</p>
+      <input type="file" id="sel-backup" accept="application/json" />
+      <p><button class="btn" id="btn-importar">Importar</button>
+      <button class="btn" id="cerrar-import">Cerrar</button></p>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById('btn-importar').onclick = async () => {
+    const f = document.getElementById('sel-backup').files[0];
+    if (!f) return alert('Selecciona un archivo');
+    const ok = await importarBackupDesdeArchivo(f);
+    if (ok) {
+      div.remove();
+      localStorage.removeItem('backupPendienteImportar');
+    }
+  };
+  document.getElementById('cerrar-import').onclick = () => {
+    div.remove();
+    localStorage.removeItem('backupPendienteImportar');
+  };
+}
+
+function mostrarModalActualizacion(nuevaVersion) {
+  if (document.getElementById('update-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'update-modal';
+  div.className = 'modal';
+  div.innerHTML = `
+    <div class="modal-content">
+      <p>Se ha generado una copia de seguridad. Por favor, guarda este archivo antes de continuar con la actualización.</p>
+      <p><button class="btn" id="descargar-backup">Descargar backup</button></p>
+      <p><button class="btn" id="confirm-update" disabled>Actualizar ahora</button></p>
+      <p><button class="btn" id="cancel-update">Cancelar</button></p>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById('descargar-backup').onclick = async () => {
+    await exportarBackup();
+    document.getElementById('confirm-update').disabled = false;
+  };
+  document.getElementById('confirm-update').onclick = () => {
+    proceedUpdate(nuevaVersion);
+  };
+  document.getElementById('cancel-update').onclick = () => {
+    div.remove();
+  };
+}
+
+async function proceedUpdate(nuevaVersion) {
+  const modal = document.getElementById('update-modal');
+  if (modal) modal.remove();
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      await reg.update();
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    }
+  }
+  const keys = await caches.keys();
+  await Promise.all(keys.map(k => caches.delete(k)));
+  saveUserSetting('version', nuevaVersion);
+  location.reload(true);
 }
 
 // ----- Modal Editar Activo -----
@@ -1802,11 +1895,17 @@ async function obtenerTipoCambio(moneda) {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
+  }
   await initAjustes();
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
   navegar();
   window.addEventListener("hashchange", navegar);
+  if (localStorage.getItem('backupPendienteImportar')) {
+    mostrarModalImportarBackup();
+  }
   checkForUpdates();
 });
