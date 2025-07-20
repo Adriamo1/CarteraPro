@@ -3710,6 +3710,8 @@ function initDragAndDrop() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+    router();
+  window.addEventListener("hashchange", router);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
@@ -3729,8 +3731,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   registrarHistoricoCartera();
   registrarHistorialPatrimonio();
   scheduleAutoBackup();
-  router();
-  window.addEventListener("hashchange", router);
   if (localStorage.getItem('backupPendienteImportar')) {
     mostrarModalImportarBackup();
   }
