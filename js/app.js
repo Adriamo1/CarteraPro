@@ -1,3 +1,4 @@
+// Bundled from src/app.js using Rollup
 // Configuración de IndexedDB con Dexie
 const db = new Dexie('carteraPRO');
 db.version(1).stores({
