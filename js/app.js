@@ -1215,6 +1215,12 @@ async function renderActivos() {
   };
 
   function attachRowHandlers() {
+    document.querySelectorAll('.ver-activo').forEach(a => {
+      a.onclick = e => {
+        e.preventDefault();
+        mostrarDetalleActivo(Number(a.dataset.id));
+      };
+    });
     document.querySelectorAll('.edit-act').forEach(btn => {
       btn.onclick = async () => {
         const id = Number(btn.dataset.id);
@@ -1254,7 +1260,7 @@ async function renderActivos() {
         return okTexto && okTipo && okMon;
       }).map(a => `
         <tr data-id="${a.id}">
-          <td>${a.nombre}</td>
+          <td><a href="#" class="ver-activo" data-id="${a.id}">${a.nombre}</a></td>
           <td>${a.ticker}</td>
           <td>${a.tipo}</td>
           <td>${a.moneda}</td>
@@ -3280,6 +3286,47 @@ async function mostrarDetalleDeuda(id) {
     });
   });
   renderGraficoHistorialDeuda(id);
+}
+
+async function mostrarDetalleActivo(id) {
+  const appMain = document.getElementById('app');
+  const cont = document.getElementById('detalle-activo');
+  const act = await db.activos.get(id);
+  if (!act) return;
+  const trans = await db.transacciones.where('activoId').equals(id).toArray();
+  const ingresos = await db.ingresos.where('activoId').equals(id).toArray();
+  trans.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
+  const filasT = trans.map(t=>`<tr><td>${t.fecha}</td><td>${t.tipo}</td><td>${t.cantidad}</td><td>${t.precio}</td></tr>`).join('');
+  const filasI = ingresos.map(i=>`<tr><td>${i.fecha}</td><td>${i.tipo}</td><td>${formatCurrency(i.importe)}</td></tr>`).join('');
+  cont.innerHTML = `<div class="card"><h2>${act.nombre}</h2>
+    <section class="detalle">
+      <h3>Transacciones</h3>
+      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filasT}</tbody></table>
+      <h3>Ingresos</h3>
+      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th></tr></thead><tbody>${filasI}</tbody></table>
+      <canvas id="grafico-detalle-activo" height="120"></canvas>
+      <button class="btn" id="volver-activos">Volver</button>
+    </section></div>`;
+  appMain.style.display = 'none';
+  cont.style.display = 'block';
+  document.getElementById('volver-activos').onclick = () => {
+    cont.innerHTML = '';
+    cont.style.display = 'none';
+    appMain.style.display = '';
+    renderActivos();
+  };
+  if (hasChart && trans.length) {
+    const ctx = document.getElementById('grafico-detalle-activo').getContext('2d');
+    let qty = 0;
+    const labels = [];
+    const datos = [];
+    for (const t of trans) {
+      qty += (t.tipo.toLowerCase() === 'compra' ? +t.cantidad : -t.cantidad);
+      labels.push(t.fecha);
+      datos.push(qty);
+    }
+    new Chart(ctx, {type:'line', data:{labels,datasets:[{data:datos, borderColor:'#3f8edc', fill:false}]}, options:{plugins:{legend:{display:false}}}});
+  }
 }
 
 // ----- Modal Análisis Value -----
