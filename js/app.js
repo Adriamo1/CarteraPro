@@ -551,6 +551,32 @@ async function totalInteresesPagadosDeuda() {
     .filter(m => m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión')
     .reduce((s,m)=>s+(+m.importe||0),0);
 }
+
+async function prioridadAmortizacionDeudas() {
+  const deudas = await db.deudas.toArray();
+  const data = [];
+  for (const d of deudas) {
+    const saldo = await calcularSaldoPendiente(d);
+    if (saldo <= 0) continue;
+    data.push({ deuda: d, saldo });
+  }
+  if (!data.length) return [];
+  const maxTin = Math.max(...data.map(r => parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0)));
+  const maxSaldo = Math.max(...data.map(r => r.saldo));
+  const maxDias = Math.max(...data.map(r => r.deuda.fechaVencimiento ? diffDias(new Date(), new Date(r.deuda.fechaVencimiento)) : 0));
+  return data.map(r => {
+    const tin = parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0);
+    const tinScore = maxTin ? tin / maxTin : 0;
+    const saldoScore = maxSaldo ? 1 - r.saldo / maxSaldo : 0;
+    let diasScore = 0;
+    if (r.deuda.fechaVencimiento) {
+      const dias = diffDias(new Date(), new Date(r.deuda.fechaVencimiento));
+      diasScore = maxDias ? 1 - Math.max(0, dias) / maxDias : 0;
+    }
+    const prioridad = (tinScore + saldoScore + diasScore) / 3;
+    return { id: r.deuda.id, prioridad };
+  }).sort((a,b) => b.prioridad - a.prioridad);
+}
 async function analizarCosteDeudasVsCuenta() {
   if (!state.interestRates.length) {
     state.interestRates = await db.interestRates.toArray();
@@ -1192,6 +1218,8 @@ async function renderDeudas() {
   let totalSaldo = 0, totalIntereses = 0, sumTinSaldo = 0;
   let proxVenc = null;
   let hayAlertas = false;
+  const prioridades = await prioridadAmortizacionDeudas();
+  const topPrioridad = new Set(prioridades.slice(0,3).map(p=>p.id));
   const filas = await Promise.all(deudas.map(async d => {
     const saldo = await calcularSaldoPendiente(d);
     const pagos = (+d.capitalInicial || 0) - saldo;
@@ -1210,8 +1238,9 @@ async function renderDeudas() {
     const vencida = vencDate && vencDate < new Date() && saldo > 0;
     hayAlertas = hayAlertas || vencida || sinPagoReciente;
     const alertIcons = `${vencida ? '⚠️' : ''}${sinPagoReciente ? ' ⏰' : ''}`;
+    const pri = topPrioridad.has(d.id) ? '<span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>' : '';
     return `<tr data-id="${d.id}">
-      <td>${d.tipo || ''}</td>
+      <td>${pri}${d.tipo || ''}</td>
       <td>${d.entidad || ''}</td>
       <td>${formatCurrency(d.capitalInicial)}</td>
       <td>${formatCurrency(saldo)}</td>
@@ -2596,6 +2625,10 @@ function diffMeses(a, b) {
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
 }
 
+function diffDias(a, b) {
+  return Math.ceil((b - a) / 86400000);
+}
+
 async function calcularSaldoPendiente(id) {
   const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
   if (!deuda) return 0;
@@ -2641,6 +2674,11 @@ async function mostrarDetalleDeuda(id) {
   const saldo = await calcularSaldoPendiente(deuda);
   let resumen = `<p><strong>${deuda.descripcion}</strong> (${deuda.tipo || ''})<br>
     Entidad: ${deuda.entidad || ''} · Capital inicial: ${formatCurrency(deuda.capitalInicial)} · Saldo pendiente: ${formatCurrency(saldo)} · Interés: ${(deuda.tipoInteres || deuda.tin || 0)}% · Vencimiento: ${deuda.fechaVencimiento || ''}</p>`;
+  const prioridades = await prioridadAmortizacionDeudas();
+  const top = new Set(prioridades.slice(0,3).map(p=>p.id));
+  if (top.has(deuda.id)) {
+    resumen += ' <span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>';
+  }
   if (deuda.tipo === 'Hipoteca' && deuda.inmuebleAsociado) {
     const bienId = Number(deuda.inmuebleAsociado);
     const bien = await db.bienes.get(bienId);

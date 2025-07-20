@@ -391,3 +391,8 @@ footer {
 }
 .alert.cumplido { color: var(--color-positivo); }
 .alert.pendiente { color: var(--color-negativo); }
+.prioridad {
+  color: var(--color-accent);
+  margin-right: 4px;
+  font-weight: bold;
+}
