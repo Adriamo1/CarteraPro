@@ -1,5 +1,5 @@
 // service-worker.js
-const CACHE_NAME = 'cartera-pro-valpha-0.7.1.8';
+const CACHE_NAME = 'cartera-pro-valpha-0.7.1.11';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -9,9 +9,6 @@ const urlsToCache = [
   '/icon512.png',
   // Añade tus scripts si quieres cachearlos:
   '/js/app.js',
-  '/libs/dexie.min.js',
-  '/libs/chart.umd.js',
-  '/libs/papaparse.min.js',
   '/version.json'
 ];
 
