@@ -686,6 +686,46 @@ async function renderGraficoHistorialDeuda(id) {
   });
 }
 
+async function datosComparativaDeudas() {
+  const [deudas, movs] = await Promise.all([
+    db.deudas.toArray(),
+    db.movimientosDeuda.toArray()
+  ]);
+  let saldoHip = 0, saldoPres = 0, intHip = 0, intPres = 0;
+  for (const d of deudas) {
+    const tipo = (d.tipo || '').toLowerCase().includes('hipotec') ? 'hip' : 'pre';
+    const saldo = await calcularSaldoPendiente(d);
+    const intereses = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión'))
+      .reduce((s,m)=>s+(+m.importe||0),0);
+    if (tipo === 'hip') {
+      saldoHip += saldo;
+      intHip += intereses;
+    } else {
+      saldoPres += saldo;
+      intPres += intereses;
+    }
+  }
+  return { saldoHip, saldoPres, intHip, intPres };
+}
+
+async function renderGraficoComparativaDeudas() {
+  if (!hasChart) return;
+  const datos = await datosComparativaDeudas();
+  const ctx = document.getElementById('grafico-deudas');
+  if (!ctx) return;
+  new Chart(ctx.getContext('2d'), {
+    type:'bar',
+    data:{
+      labels:['Saldo pendiente','Intereses pagados'],
+      datasets:[
+        {label:'Hipoteca', data:[datos.saldoHip, datos.intHip], backgroundColor:'#2063c2'},
+        {label:'Préstamo', data:[datos.saldoPres, datos.intPres], backgroundColor:'#70c1b3'}
+      ]
+    },
+    options:{responsive:true}
+  });
+}
+
 // Agrupa activos por broker contando número y valor
 async function resumenPorBroker() {
   const activos = await db.activos.toArray();
@@ -1341,16 +1381,17 @@ async function renderDeudas() {
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-icon">💰</div><div><div>Total pendiente</div><div class="kpi-value">${formatCurrency(totalSaldo)}</div></div></div>
         <div class="kpi-card"><div class="kpi-icon">💸</div><div><div>Intereses pagados</div><div class="kpi-value">${formatCurrency(totalIntereses)}</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN medio</div><div class="kpi-value">${tinMedio}%</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Próx. vencimiento</div><div class="kpi-value">${proxVencStr}</div></div></div>
-      </div>
-      <button id="add-deuda" class="btn">Añadir deuda</button>
+      <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN medio</div><div class="kpi-value">${tinMedio}%</div></div></div>
+      <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Próx. vencimiento</div><div class="kpi-value">${proxVencStr}</div></div></div>
+    </div>
+    <canvas id="grafico-deudas" height="120"></canvas>
+    <button id="add-deuda" class="btn">Añadir deuda</button>
       <button id="sim-amort" class="btn">Simular amortización</button>
       <table class="tabla responsive-table"><thead><tr><th>Tipo</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
-      <canvas id="grafico-deudas" height="120"></canvas>
       <div id="detalle-deuda"></div>
     </div>`;
   app.innerHTML = html;
+  renderGraficoComparativaDeudas();
 
   document.getElementById('add-deuda').onclick = () => mostrarModalDeuda();
   document.getElementById('sim-amort').onclick = () => mostrarModalSimularAmortizacion();
