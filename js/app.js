@@ -1,27 +1,5 @@
 // app.js sin módulos, todo local
-const db = new Dexie("CarteraPRODB");
-db.version(1).stores({
-  activos: "++id,nombre,ticker,tipo,moneda",
-  transacciones: "++id,activoId,tipo,fecha,cantidad,precio,comision,broker",
-  cuentas: "++id,nombre,banco,tipo,saldo",
-  tiposCambio: "++id,moneda,tasa,fecha",
-  ajustes: "clave,valor"
-});
-
-// Versión 2: movimientos de cuentas
-db.version(2).stores({
-  movimientos: "++id,cuentaId,fecha,importe,descripcion"
-});
-
-// Versión 3: tabla de préstamos (TIN de cuentas remuneradas o hipotecas)
-db.version(3).stores({
-  prestamos: "++id,tin"
-});
-
-// Versión 4: historial de TIN para cuentas remuneradas
-db.version(4).stores({
-  interestRates: "++id,fecha,tin"
-});
+const db = window.db;
 
 const app = document.getElementById("app");
 const state = {
