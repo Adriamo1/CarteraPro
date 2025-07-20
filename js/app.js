@@ -357,6 +357,8 @@ const vistas = {
   "#dashboard": renderDashboard,
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
+  "#ingresos": renderIngresos,
+  "#gastos": renderGastos,
   "#cuentas": renderCuentas,
   "#deudas": renderDeudas,
   "#planpagos": renderPlanPagos,
@@ -1629,6 +1631,72 @@ function renderTiposCambio() {
   });
 }
 
+async function renderIngresos() {
+  const ingresos = await db.ingresos.toArray();
+  const filas = ingresos.map(i => `
+      <tr data-id="${i.id}">
+        <td data-label="Fecha">${i.fecha || ''}</td>
+        <td data-label="Importe">${formatCurrency(i.importe)}</td>
+        <td data-label="Tipo">${i.tipo || ''}</td>
+        <td data-label="Origen">${i.origen || ''}</td>
+        <td>
+          <button class="btn btn-small edit-ingreso" data-id="${i.id}">✏️</button>
+          <button class="btn btn-small del-ingreso" data-id="${i.id}">🗑️</button>
+        </td>
+      </tr>`).join('');
+  app.innerHTML = `
+    <div class="card">
+      <h2>Ingresos</h2>
+      <button id="add-ingreso" class="btn">Añadir ingreso</button>
+      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Origen</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+    </div>`;
+  document.getElementById('add-ingreso').onclick = () => mostrarModalIngreso();
+  document.querySelectorAll('.edit-ingreso').forEach(b => b.onclick = async () => {
+    const ing = await db.ingresos.get(Number(b.dataset.id));
+    if (ing) mostrarModalIngreso(ing);
+  });
+  document.querySelectorAll('.del-ingreso').forEach(b => b.onclick = () => {
+    const id = Number(b.dataset.id);
+    mostrarConfirmacion('¿Eliminar este ingreso?', async () => {
+      await borrarEntidad('income', id);
+      renderIngresos();
+    });
+  });
+}
+
+async function renderGastos() {
+  const gastos = await db.gastos.toArray();
+  const filas = gastos.map(g => `
+      <tr data-id="${g.id}">
+        <td data-label="Fecha">${g.fecha || ''}</td>
+        <td data-label="Importe">${formatCurrency(g.importe)}</td>
+        <td data-label="Tipo">${g.tipo || ''}</td>
+        <td data-label="Categoría">${g.categoria || ''}</td>
+        <td>
+          <button class="btn btn-small edit-gasto" data-id="${g.id}">✏️</button>
+          <button class="btn btn-small del-gasto" data-id="${g.id}">🗑️</button>
+        </td>
+      </tr>`).join('');
+  app.innerHTML = `
+    <div class="card">
+      <h2>Gastos</h2>
+      <button id="add-gasto" class="btn">Añadir gasto</button>
+      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Categoría</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+    </div>`;
+  document.getElementById('add-gasto').onclick = () => mostrarModalGasto();
+  document.querySelectorAll('.edit-gasto').forEach(b => b.onclick = async () => {
+    const g = await db.gastos.get(Number(b.dataset.id));
+    if (g) mostrarModalGasto(g);
+  });
+  document.querySelectorAll('.del-gasto').forEach(b => b.onclick = () => {
+    const id = Number(b.dataset.id);
+    mostrarConfirmacion('¿Eliminar este gasto?', async () => {
+      await borrarEntidad('expenses', id);
+      renderGastos();
+    });
+  });
+}
+
 function recomendacionBuffett(d) {
   let score = 0;
   if (d.per > 0 && d.per < 15) score++;
@@ -2755,6 +2823,116 @@ async function mostrarModalTransaccion(activos, trans) {
       modal.classList.add('hidden');
       renderTransacciones();
     });
+  };
+}
+
+// ----- Modal Ingreso -----
+function crearModalIngreso() {
+  if (document.getElementById('ingreso-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'ingreso-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nuevo ingreso</h3>
+      <form id="form-ingreso">
+        <input type="date" name="fecha" required />
+        <input type="number" step="any" name="importe" placeholder="Importe" required />
+        <input name="tipo" placeholder="Tipo" />
+        <input name="origen" placeholder="Origen" />
+        <input name="notas" placeholder="Notas" />
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-ingreso">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalIngreso(ing) {
+  crearModalIngreso();
+  const modal = document.getElementById('ingreso-modal');
+  const form = document.getElementById('form-ingreso');
+  if (ing) {
+    modal.querySelector('h3').textContent = 'Editar ingreso';
+    form.fecha.value = ing.fecha || '';
+    form.importe.value = ing.importe;
+    form.tipo.value = ing.tipo || '';
+    form.origen.value = ing.origen || '';
+    form.notas.value = ing.notas || '';
+    form.dataset.id = ing.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nuevo ingreso';
+    form.reset();
+    form.dataset.id = '';
+  }
+  modal.classList.remove('hidden');
+  modal.querySelector('#cancel-ingreso').onclick = () => modal.classList.add('hidden');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    data.importe = parseFloat(data.importe);
+    const id = form.dataset.id;
+    if (id) await actualizarEntidad('income', { ...data, id: Number(id) });
+    else await db.ingresos.add(data);
+    modal.classList.add('hidden');
+    renderIngresos();
+  };
+}
+
+// ----- Modal Gasto -----
+function crearModalGasto() {
+  if (document.getElementById('gasto-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'gasto-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nuevo gasto</h3>
+      <form id="form-gasto">
+        <input type="date" name="fecha" required />
+        <input type="number" step="any" name="importe" placeholder="Importe" required />
+        <input name="tipo" placeholder="Tipo" />
+        <input name="categoria" placeholder="Categoría" />
+        <input name="descripcion" placeholder="Descripción" />
+        <input name="notas" placeholder="Notas" />
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-gasto">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalGasto(g) {
+  crearModalGasto();
+  const modal = document.getElementById('gasto-modal');
+  const form = document.getElementById('form-gasto');
+  if (g) {
+    modal.querySelector('h3').textContent = 'Editar gasto';
+    form.fecha.value = g.fecha || '';
+    form.importe.value = g.importe;
+    form.tipo.value = g.tipo || '';
+    form.categoria.value = g.categoria || '';
+    form.descripcion.value = g.descripcion || '';
+    form.notas.value = g.notas || '';
+    form.dataset.id = g.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nuevo gasto';
+    form.reset();
+    form.dataset.id = '';
+  }
+  modal.classList.remove('hidden');
+  modal.querySelector('#cancel-gasto').onclick = () => modal.classList.add('hidden');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    data.importe = parseFloat(data.importe);
+    const id = form.dataset.id;
+    if (id) await actualizarEntidad('expenses', { ...data, id: Number(id) });
+    else await db.gastos.add(data);
+    modal.classList.add('hidden');
+    renderGastos();
   };
 }
 
