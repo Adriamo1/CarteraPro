@@ -358,8 +358,6 @@ const vistas = {
   "#dashboard": renderDashboard,
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
-  "#ingresos": renderIngresos,
-  "#gastos": renderGastos,
   "#cuentas": renderCuentas,
   "#deudas": renderDeudas,
   "#planpagos": renderPlanPagos,
@@ -367,7 +365,6 @@ const vistas = {
   "#analisisvalue": renderAnalisisValue,
   "#glosario": renderGlosario,
   "#info": renderInfo,
-  "#debug": renderDebug,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
@@ -1295,7 +1292,12 @@ async function renderActivos() {
 }
 
 function renderTransacciones() {
-  Promise.all([db.transacciones.toArray(), db.activos.toArray()]).then(([trans, activos]) => {
+  Promise.all([
+    db.transacciones.toArray(),
+    db.activos.toArray(),
+    db.ingresos.toArray(),
+    db.gastos.toArray()
+  ]).then(([trans, activos, ingresos, gastos]) => {
     const mapa = Object.fromEntries(activos.map(a => [a.id, a]));
     const total = trans.length;
     const tipos = [...new Set(activos.map(a => a.tipo))];
@@ -1320,6 +1322,16 @@ function renderTransacciones() {
       <table class="responsive-table"><thead><tr>
           <th>Fecha</th><th>Activo</th><th>Tipo</th><th>Cant.</th><th>Precio</th><th>Comisión</th><th></th>
       </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h3>Ingresos</h3>
+      <button class="btn" id="add-ingreso">Añadir ingreso</button>
+      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Origen</th><th></th></tr></thead><tbody id="ingresos-body"></tbody></table>
+    </div>
+    <div class="card">
+      <h3>Gastos</h3>
+      <button class="btn" id="add-gasto">Añadir gasto</button>
+      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Categoría</th><th></th></tr></thead><tbody id="gastos-body"></tbody></table>
     </div>`;
 
     document.getElementById("exportar-trans").onclick = async () => {
@@ -1388,10 +1400,64 @@ function renderTransacciones() {
       attachHandlers();
     };
 
+    const ingBody = document.getElementById('ingresos-body');
+    const gasBody = document.getElementById('gastos-body');
+    if (ingBody) {
+      ingBody.innerHTML = ingresos.map(i => `
+        <tr data-id="${i.id}">
+          <td data-label="Fecha">${i.fecha || ''}</td>
+          <td data-label="Importe">${formatCurrency(i.importe)}</td>
+          <td data-label="Tipo">${i.tipo || ''}</td>
+          <td data-label="Origen">${i.origen || ''}</td>
+          <td>
+            <button class="btn btn-small edit-ingreso" data-id="${i.id}">✏️</button>
+            <button class="btn btn-small del-ingreso" data-id="${i.id}">🗑️</button>
+          </td>
+        </tr>`).join('');
+    }
+    if (gasBody) {
+      gasBody.innerHTML = gastos.map(g => `
+        <tr data-id="${g.id}">
+          <td data-label="Fecha">${g.fecha || ''}</td>
+          <td data-label="Importe">${formatCurrency(g.importe)}</td>
+          <td data-label="Tipo">${g.tipo || ''}</td>
+          <td data-label="Categoría">${g.categoria || ''}</td>
+          <td>
+            <button class="btn btn-small edit-gasto" data-id="${g.id}">✏️</button>
+            <button class="btn btn-small del-gasto" data-id="${g.id}">🗑️</button>
+          </td>
+        </tr>`).join('');
+    }
+
     buscar.addEventListener('input', filtrar);
     selTipo.addEventListener('change', filtrar);
     selMoneda.addEventListener('change', filtrar);
     filtrar();
+
+    document.getElementById('add-ingreso').onclick = () => mostrarModalIngreso();
+    document.querySelectorAll('.edit-ingreso').forEach(b => b.onclick = async () => {
+      const ing = await db.ingresos.get(Number(b.dataset.id));
+      if (ing) mostrarModalIngreso(ing);
+    });
+    document.querySelectorAll('.del-ingreso').forEach(b => b.onclick = () => {
+      const id = Number(b.dataset.id);
+      mostrarConfirmacion('¿Eliminar este ingreso?', async () => {
+        await borrarEntidad('income', id);
+        renderTransacciones();
+      });
+    });
+    document.getElementById('add-gasto').onclick = () => mostrarModalGasto();
+    document.querySelectorAll('.edit-gasto').forEach(b => b.onclick = async () => {
+      const g = await db.gastos.get(Number(b.dataset.id));
+      if (g) mostrarModalGasto(g);
+    });
+    document.querySelectorAll('.del-gasto').forEach(b => b.onclick = () => {
+      const id = Number(b.dataset.id);
+      mostrarConfirmacion('¿Eliminar este gasto?', async () => {
+        await borrarEntidad('expenses', id);
+        renderTransacciones();
+      });
+    });
   });
 }
 
@@ -1979,7 +2045,7 @@ function renderAjustes() {
 }
 
 async function renderInfo() {
-  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
+  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div><div id="info-debug"></div>`;
   try {
     let local;
     try {
@@ -2020,6 +2086,8 @@ async function renderInfo() {
     } catch {
     document.getElementById('info-cont').textContent = 'No disponible';
   }
+  const dbg = document.getElementById('info-debug');
+  if (dbg) dbg.innerHTML = await getDebugHtml();
 }
 
 function renderGlosario() {
@@ -2036,22 +2104,26 @@ function renderGlosario() {
   app.innerHTML = `<div class="card"><h2>Glosario financiero</h2><dl>${lista}</dl></div>`;
 }
 
-async function renderDebug() {
+async function getDebugHtml() {
   if (!appState) await cargarEstado();
   const size = JSON.stringify(appState).length;
   const assets = appState.assets.length;
   const trans = appState.transactions.length;
   const lastTc = state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A';
   const lastHist = appState.portfolioHistory.slice(-1)[0]?.fecha || 'N/A';
-  app.innerHTML = `
+  return `
     <div class="card">
-      <h2>Estado de la app</h2>
+      <h3>Debug</h3>
       <p>Tamaño del state: ${size} bytes</p>
       <p>Activos registrados: ${assets}</p>
       <p>Transacciones registradas: ${trans}</p>
       <p>Última actualización de TC: ${lastTc}</p>
       <p>Último histórico de cartera: ${lastHist}</p>
     </div>`;
+}
+
+async function renderDebug() {
+  app.innerHTML = await getDebugHtml();
 }
 
 // --------- Gráficos Dashboard ---------
@@ -2906,7 +2978,8 @@ function mostrarModalIngreso(ing) {
     if (id) await actualizarEntidad('income', { ...data, id: Number(id) });
     else await db.ingresos.add(data);
     modal.classList.add('hidden');
-    renderIngresos();
+    if (location.hash === '#transacciones') renderTransacciones();
+    else renderIngresos();
   };
 }
 
@@ -2962,7 +3035,8 @@ function mostrarModalGasto(g) {
     if (id) await actualizarEntidad('expenses', { ...data, id: Number(id) });
     else await db.gastos.add(data);
     modal.classList.add('hidden');
-    renderGastos();
+    if (location.hash === '#transacciones') renderTransacciones();
+    else renderGastos();
   };
 }
 
