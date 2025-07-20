@@ -318,6 +318,7 @@ const vistas = {
   "#deudas": renderDeudas,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
+  "#glosario": renderGlosario,
   "#info": renderInfo,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
@@ -479,6 +480,19 @@ async function saldoMedioAnual() {
   return (totalInicio + totalFin) / 2;
 }
 
+async function calcularRentabilidadAnualizada() {
+  const hist = await db.portfolioHistory.orderBy('fecha').toArray();
+  if (hist.length < 2) return 0;
+  const inicio = hist[0];
+  const fin = hist[hist.length - 1];
+  const valIni = +inicio.valorTotal || 0;
+  const valFin = +fin.valorTotal || 0;
+  const dias = (new Date(fin.fecha) - new Date(inicio.fecha)) / 86400000;
+  if (valIni <= 0 || dias <= 0) return 0;
+  const anos = dias / 365;
+  return Math.pow(valFin / valIni, 1 / anos) - 1;
+}
+
 async function totalSavebackPendiente() {
   if (!state.accountMovements.length) {
     state.accountMovements = await db.movimientos.toArray();
@@ -588,6 +602,7 @@ async function renderDashboard() {
   const interesMes = await calcularInteresMes();
   const interesAnual = await calcularInteresAnual();
   const apy = await calcularApy();
+  const cagr = await calcularRentabilidadAnualizada();
   const savePend = await totalSavebackPendiente();
   const efectoDivisa = await calcularEfectoDivisa();
   const dividendos = await totalDividendos();
@@ -603,6 +618,7 @@ async function renderDashboard() {
     .join('');
   app.innerHTML = `
     <h2>Panel de control</h2>
+    ${objetivo>0?`<div class="alert ${cumplido?'cumplido':'pendiente'}">${cumplido?'🎯 ¡Has alcanzado tu objetivo anual de rentabilidad! <button id="reset-obj" class="btn btn-small">Reiniciar</button>':'Objetivo a '+(objetivo-roi).toFixed(2)+' %'}</div>`:''}
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-icon">💰</div>
@@ -639,8 +655,15 @@ async function renderDashboard() {
       <div class="kpi-card">
         <div class="kpi-icon">🎯</div>
         <div>
-          <div>Rentabilidad cartera</div>
+          <div>Rentabilidad cartera <span class="help" title="ROI"></span></div>
           <div class="kpi-value ${roi>=0?'kpi-positivo':'kpi-negativo'}">${roi.toFixed(2)}% ${cumplido?'🏆':''}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📆</div>
+        <div>
+          <div>Rentabilidad anualizada <span class="help" title="(valorFinal / valorInicial)^(1/años) - 1">?</span></div>
+          <div class="kpi-value ${cagr>=0?'kpi-positivo':'kpi-negativo'}">${(cagr*100).toFixed(2)}%</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -687,8 +710,8 @@ async function renderDashboard() {
         </div>
       </div>
     </div>
-    <div class="card"><h3>P&L por activo</h3><canvas id="grafico-pnl" height="160"></canvas></div>
-    <div class="card"><h3>Saveback y TIN</h3><canvas id="grafico-saveback" height="160"></canvas></div>
+    <div class="card"><h3>P&L por activo <span class="help" title="Beneficio o pérdida"></span></h3><canvas id="grafico-pnl" height="160"></canvas></div>
+    <div class="card"><h3>Saveback y TIN <span class="help" title="Ahorro para inversiones y tipo nominal"></span></h3><canvas id="grafico-saveback" height="160"></canvas></div>
     <div class="card"><h3>Asignación actual vs objetivo</h3><canvas id="grafico-asignacion" height="160"></canvas></div>
     <div class="card"><h3>Distribución por divisa</h3><canvas id="grafico-divisa" height="160"></canvas></div>
     <div class="card"><h3>Distribución por sector</h3><canvas id="grafico-sector" height="160"></canvas></div>
@@ -698,6 +721,10 @@ async function renderDashboard() {
     `;
 
   renderGraficosDashboard();
+  const btnReset = document.getElementById('reset-obj');
+  if (btnReset) btnReset.onclick = () => {
+    setObjetivoRentabilidad(0).then(renderDashboard);
+  };
 }
 
 async function renderActivos() {
@@ -711,7 +738,18 @@ async function renderActivos() {
       <form id="form-activo">
         <input name="nombre" placeholder="Nombre" required />
         <input name="ticker" placeholder="Ticker" required />
-        <input name="tipo" placeholder="Tipo" required />
+        <select name="tipo" id="tipo-activo">
+          <option value="Acción">Acción</option>
+          <option value="ETF">ETF</option>
+          <option value="Fondo de inversión">Fondo de inversión</option>
+          <option value="Plan de pensiones">Plan de pensiones</option>
+          <option value="REIT">REIT</option>
+          <option value="Inmueble">Inmueble</option>
+          <option value="Metales preciosos">Metales preciosos</option>
+          <option value="Cripto">Cripto</option>
+          <option value="Otro">Otro</option>
+        </select>
+        <input name="tipo-personal" id="tipo-personal" placeholder="Tipo personal" style="display:none" />
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
@@ -760,6 +798,20 @@ async function renderActivos() {
   }
   actualizarDatalistEntidades();
 
+  const selTipo = document.getElementById('tipo-activo');
+  const inputPersonal = document.getElementById('tipo-personal');
+  if (selTipo) {
+    selTipo.onchange = () => {
+      if (selTipo.value === 'Otro') {
+        inputPersonal.style.display = 'block';
+        inputPersonal.required = true;
+      } else {
+        inputPersonal.style.display = 'none';
+        inputPersonal.required = false;
+      }
+    };
+  }
+
   document.getElementById('toggle-activos').onclick = () => {
     setVista('activos', modo === 'detalle' ? 'resumen' : 'detalle');
     renderActivos();
@@ -769,6 +821,7 @@ async function renderActivos() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
+    if (data["tipo"] === "Otro") data["tipo"] = data["tipo-personal"] || "Otro";
     actualizarEntidad('assets', data).then(renderActivos);
   };
 
@@ -971,8 +1024,8 @@ async function renderCuentas() {
   let html = `<div class="card">
       <h2>Cuentas</h2>
       <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN actual</div><div class="kpi-value">${tinActual}%</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">🔄</div><div><div>TAE estimada</div><div class="kpi-value">${tae.toFixed(2)}%</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN actual <span class="help" title="Tipo nominal"></span></div><div class="kpi-value">${tinActual}%</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">🔄</div><div><div>TAE estimada <span class="help" title="Tasa anual equivalente"></span></div><div class="kpi-value">${tae.toFixed(2)}%</div></div></div>
         <div class="kpi-card"><div class="kpi-icon">💵</div><div><div>Interés mes</div><div class="kpi-value">${formatCurrency(interesMes)}</div></div></div>
         <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Interés anual</div><div class="kpi-value">${formatCurrency(interesAnual)}</div></div></div>
         <div class="kpi-card"><div class="kpi-icon">✅</div><div><div>Rent. efectiva</div><div class="kpi-value">${rentEfec.toFixed(2)}%</div></div></div>
@@ -1464,6 +1517,20 @@ async function renderInfo() {
     } catch {
     document.getElementById('info-cont').textContent = 'No disponible';
   }
+}
+
+function renderGlosario() {
+  const defs = {
+    'P&L':'Beneficio o pérdida. Diferencia entre valor actual y coste total.',
+    'TIN':'Tipo de interés nominal.',
+    'APY':'Rentabilidad anual equivalente.',
+    'ROI':'Retorno de la inversión.',
+    'TAE':'Tasa anual equivalente.',
+    'Saveback':'Ahorro destinado a amortizar deudas o invertir.'
+  };
+  const lista = Object.entries(defs)
+    .map(([t,d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('');
+  app.innerHTML = `<div class="card"><h2>Glosario financiero</h2><dl>${lista}</dl></div>`;
 }
 
 // --------- Gráficos Dashboard ---------
