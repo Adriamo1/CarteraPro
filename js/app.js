@@ -1135,7 +1135,7 @@ async function renderDeudas() {
     totalIntereses += intereses;
     const vencida = d.fechaVencimiento && new Date(d.fechaVencimiento) < new Date() && saldo > 0;
     return `<tr data-id="${d.id}">
-      <td>${d.descripcion || ''}</td>
+      <td>${d.tipo || ''}</td>
       <td>${d.entidad || ''}</td>
       <td>${formatCurrency(d.capitalInicial)}</td>
       <td>${formatCurrency(saldo)}</td>
@@ -1153,7 +1153,7 @@ async function renderDeudas() {
       <h2>Deudas</h2>
       <div class="mini-explica">Saldo pendiente total: ${formatCurrency(totalSaldo)} | Intereses pagados: ${formatCurrency(totalIntereses)}</div>
       <button id="add-deuda" class="btn">Añadir deuda</button>
-      <table class="tabla responsive-table"><thead><tr><th>Descripción</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
+      <table class="tabla responsive-table"><thead><tr><th>Tipo</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
       <div id="detalle-deuda"></div>
     </div>`;
   app.innerHTML = html;
@@ -1172,6 +1172,11 @@ async function renderDeudas() {
     });
   });
   document.querySelectorAll('.ver-deuda').forEach(b => b.onclick = () => mostrarDetalleDeuda(Number(b.dataset.id)));
+  document.querySelectorAll('.tabla tbody tr').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') mostrarDetalleDeuda(Number(tr.dataset.id));
+    });
+  });
 }
 
 function renderTiposCambio() {
@@ -2301,11 +2306,11 @@ function crearModalDeuda() {
           <option value="Hipoteca">Hipoteca</option>
         </select>
         <input name="descripcion" placeholder="Descripción" required />
-        <input name="entidad" id="inp-entidad" list="lista-entidades" placeholder="Entidad" />
+        <input name="entidad" id="inp-entidad" list="lista-entidades" placeholder="Entidad" required />
         <input type="date" name="fechaInicio" required />
         <input type="date" name="fechaVencimiento" />
-        <input type="number" step="any" name="capitalInicial" placeholder="Capital inicial" required />
-        <input type="number" step="any" name="tipoInteres" placeholder="TIN %" required />
+        <input type="number" step="any" min="0" name="capitalInicial" placeholder="Capital inicial" required />
+        <input type="number" step="any" min="0" name="tipoInteres" placeholder="TIN %" required />
         <label><input type="checkbox" name="interesFijo" /> Interés fijo</label>
         <input name="inmuebleAsociado" placeholder="Inmueble (si hipoteca)" />
         <textarea name="notas" placeholder="Notas"></textarea>
@@ -2452,9 +2457,19 @@ async function mostrarDetalleDeuda(id) {
   const cont = document.getElementById('detalle-deuda');
   const deuda = await db.deudas.get(id);
   const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
+  const pagCap = movs.filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
+    .reduce((s,m)=>s+(+m.importe||0),0);
+  const saldo = (+deuda.capitalInicial || 0) - pagCap;
+  let resumen = `<p><strong>${deuda.descripcion}</strong> (${deuda.tipo || ''})<br>
+    Entidad: ${deuda.entidad || ''} · Capital inicial: ${formatCurrency(deuda.capitalInicial)} · Saldo pendiente: ${formatCurrency(saldo)} · Interés: ${(deuda.tipoInteres || deuda.tin || 0)}% · Vencimiento: ${deuda.fechaVencimiento || ''}</p>`;
+  if (deuda.tipo === 'Hipoteca' && deuda.inmuebleAsociado) {
+    const bienId = Number(deuda.inmuebleAsociado);
+    const bien = await db.bienes.get(bienId);
+    if (bien) resumen += `<p>Valor inmueble: ${formatCurrency(bien.valorActual || bien.valorCompra)}</p>`;
+  }
   const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
   cont.innerHTML = `<section class="detalle">
-      <h3>${deuda.descripcion}</h3>
+      ${resumen}
       <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th class="col-ocultar">Nota</th><th></th></tr></thead><tbody>${filas}</tbody></table>
       <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
       <button class="btn" id="reg-cuota">Registrar cuota</button>
