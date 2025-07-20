@@ -1124,7 +1124,9 @@ async function renderCuentas() {
 async function renderDeudas() {
   const deudas = await db.deudas.toArray();
   const movs = await db.movimientosDeuda.toArray();
-  let totalSaldo = 0, totalIntereses = 0;
+  let totalSaldo = 0, totalIntereses = 0, sumTinSaldo = 0;
+  let proxVenc = null;
+  let hayAlertas = false;
   const filas = await Promise.all(deudas.map(async d => {
     const saldo = await calcularSaldoPendiente(d);
     const pagos = (+d.capitalInicial || 0) - saldo;
@@ -1132,14 +1134,24 @@ async function renderDeudas() {
       .reduce((s,m)=>s+(+m.importe||0),0);
     totalSaldo += saldo;
     totalIntereses += intereses;
-    const vencida = d.fechaVencimiento && new Date(d.fechaVencimiento) < new Date() && saldo > 0;
+    const tin = parseFloat(d.tipoInteres || d.tin || 0);
+    sumTinSaldo += saldo * tin;
+    const vencDate = d.fechaVencimiento ? new Date(d.fechaVencimiento) : null;
+    if (vencDate && (!proxVenc || vencDate < proxVenc)) proxVenc = vencDate;
+    const pagosDeuda = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'))
+      .sort((a,b)=> new Date(b.fecha)-new Date(a.fecha));
+    const lastPago = pagosDeuda[0]?.fecha;
+    const sinPagoReciente = !lastPago || (new Date() - new Date(lastPago)) / 86400000 > 90;
+    const vencida = vencDate && vencDate < new Date() && saldo > 0;
+    hayAlertas = hayAlertas || vencida || sinPagoReciente;
+    const alertIcons = `${vencida ? '⚠️' : ''}${sinPagoReciente ? ' ⏰' : ''}`;
     return `<tr data-id="${d.id}">
       <td>${d.tipo || ''}</td>
       <td>${d.entidad || ''}</td>
       <td>${formatCurrency(d.capitalInicial)}</td>
       <td>${formatCurrency(saldo)}</td>
       <td>${d.tipoInteres || d.tin || 0}%</td>
-      <td>${d.fechaVencimiento || ''} ${vencida ? '⚠️' : ''}</td>
+      <td>${d.fechaVencimiento || ''} ${alertIcons}</td>
       <td>
         <button class="btn btn-small ver-deuda" data-id="${d.id}">Ver</button>
         <button class="btn btn-small edit-deuda" data-id="${d.id}">✏️</button>
@@ -1148,12 +1160,23 @@ async function renderDeudas() {
     </tr>`;
   }));
 
+  const tinMedio = totalSaldo ? (sumTinSaldo / totalSaldo).toFixed(2) : 0;
+  const proxVencStr = proxVenc ? proxVenc.toISOString().slice(0,10) : '-';
+  const tipos = [...new Set(deudas.map(d=>d.tipo).filter(Boolean))];
   let html = `<div class="card">
       <h2>Deudas</h2>
-      <div class="mini-explica">Saldo pendiente total: ${formatCurrency(totalSaldo)} | Intereses pagados: ${formatCurrency(totalIntereses)}</div>
+      ${hayAlertas?'<div class="alert pendiente">Hay deudas vencidas o sin pagos recientes</div>':''}
+      <div class="filtros-table"><select id="filtro-deuda-tipo"><option value="">Todas</option>${tipos.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-icon">💰</div><div><div>Total pendiente</div><div class="kpi-value">${formatCurrency(totalSaldo)}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">💸</div><div><div>Intereses pagados</div><div class="kpi-value">${formatCurrency(totalIntereses)}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN medio</div><div class="kpi-value">${tinMedio}%</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Próx. vencimiento</div><div class="kpi-value">${proxVencStr}</div></div></div>
+      </div>
       <button id="add-deuda" class="btn">Añadir deuda</button>
       <button id="sim-amort" class="btn">Simular amortización</button>
       <table class="tabla responsive-table"><thead><tr><th>Tipo</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
+      <canvas id="grafico-deudas" height="120"></canvas>
       <div id="detalle-deuda"></div>
     </div>`;
   app.innerHTML = html;
@@ -2353,6 +2376,11 @@ function mostrarModalDeuda(deuda) {
     data.capitalInicial = parseFloat(data.capitalInicial);
     data.tipoInteres = parseFloat(data.tipoInteres);
     data.interesFijo = form.interesFijo.checked;
+    const entidades = getEntidadesFinancieras();
+    if (!entidades.includes(data.entidad)) { alert('Selecciona una entidad válida'); return; }
+    if (isNaN(data.capitalInicial) || data.capitalInicial <= 0) { alert('Importe inválido'); return; }
+    if (isNaN(data.tipoInteres) || data.tipoInteres <= 0) { alert('TIN inválido'); return; }
+    if (data.fechaVencimiento && data.fechaVencimiento < data.fechaInicio) { alert('Fechas incoherentes'); return; }
     const id = form.dataset.id;
     if (id) await actualizarEntidad('deudas', { ...data, id: Number(id) });
     else await db.deudas.add(data);
@@ -2413,6 +2441,7 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     const data = Object.fromEntries(fd.entries());
     data.deudaId = Number(data.deudaId);
     data.importe = parseFloat(data.importe);
+    if (isNaN(data.importe) || data.importe <= 0) { alert('Importe inválido'); return; }
     const id = form.dataset.id;
     if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
     else await db.movimientosDeuda.add(data);
