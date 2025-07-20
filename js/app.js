@@ -357,7 +357,20 @@ async function renderActivos() {
       </form>`;
 
   if (modo === 'resumen') {
-      html += `<ul>${activos.map(a => `<li>${a.nombre} (${a.ticker})</li>`).join('')}</ul>`;
+      html += `<table class="tabla-activos responsive-table"><thead><tr><th>Nombre</th><th>Ticker</th><th>Tipo</th><th>Moneda</th><th></th></tr></thead><tbody>`+
+        activos.map(a => `
+          <tr data-id="${a.id}">
+            <td>${a.nombre}</td>
+            <td>${a.ticker}</td>
+            <td>${a.tipo}</td>
+            <td>${a.moneda}</td>
+            <td>
+              <button class="btn btn-small edit-act" data-id="${a.id}">✏</button>
+              <button class="btn btn-small del-act" data-id="${a.id}">🗑</button>
+            </td>
+          </tr>
+        `).join('')+
+      `</tbody></table>`;
   } else {
       for (const a of activos) {
         const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
@@ -401,6 +414,26 @@ async function renderActivos() {
   document.getElementById('btn-analisis-value').onclick = () => {
     mostrarModalAnalisis();
   };
+
+  document.querySelectorAll('.edit-act').forEach(btn => {
+    btn.onclick = async () => {
+      const id = Number(btn.dataset.id);
+      const act = await db.activos.get(id);
+      if (act) mostrarModalEditarActivo(act);
+    };
+  });
+
+  document.querySelectorAll('.del-act').forEach(btn => {
+    btn.onclick = () => {
+      const id = Number(btn.dataset.id);
+      const row = btn.closest('tr');
+      mostrarConfirmacion('¿Eliminar este activo?', async () => {
+        await db.transacciones.where('activoId').equals(id).delete();
+        await db.activos.delete(id);
+        row.remove();
+      });
+    };
+  });
 
   if (modo === 'detalle') {
     for (const a of activos) {
@@ -1022,6 +1055,86 @@ async function exportarBackup() {
   a.href = URL.createObjectURL(blob);
   a.download = `carteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
+}
+
+// ----- Modal Editar Activo -----
+function crearModalActivo() {
+  if (document.getElementById('activo-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'activo-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Editar activo</h3>
+      <form id="form-activo-modal">
+        <input name="nombre" placeholder="Nombre" required />
+        <input name="ticker" placeholder="Ticker" required />
+        <input name="tipo" placeholder="Tipo" required />
+        <input name="moneda" placeholder="Moneda" required />
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-activo">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalEditarActivo(activo) {
+  crearModalActivo();
+  const modal = document.getElementById('activo-modal');
+  const form = document.getElementById('form-activo-modal');
+  form.nombre.value = activo.nombre || '';
+  form.ticker.value = activo.ticker || '';
+  form.tipo.value = activo.tipo || '';
+  form.moneda.value = activo.moneda || '';
+  form.dataset.id = activo.id;
+  modal.classList.remove('hidden');
+
+  modal.querySelector('#cancel-activo').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    const id = Number(form.dataset.id);
+    await db.activos.update(id, data);
+    actualizarFilaActivo(id, data);
+    modal.classList.add('hidden');
+  };
+}
+
+// ----- Modal Confirmar -----
+function mostrarConfirmacion(msg, onOk) {
+  let modal = document.getElementById('confirm-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'confirm-modal';
+    modal.className = 'modal hidden';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <p id="confirm-msg"></p>
+        <button id="confirm-yes" class="btn">Aceptar</button>
+        <button id="confirm-no" class="btn">Cancelar</button>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  modal.querySelector('#confirm-msg').textContent = msg;
+  modal.classList.remove('hidden');
+  modal.querySelector('#confirm-no').onclick = () => modal.classList.add('hidden');
+  modal.querySelector('#confirm-yes').onclick = () => {
+    modal.classList.add('hidden');
+    onOk();
+  };
+}
+
+function actualizarFilaActivo(id, data) {
+  const row = document.querySelector(`tr[data-id='${id}']`);
+  if (!row) return;
+  row.children[0].textContent = data.nombre;
+  row.children[1].textContent = data.ticker;
+  row.children[2].textContent = data.tipo;
+  row.children[3].textContent = data.moneda;
 }
 
 // ----- Modal Movimientos -----
