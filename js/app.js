@@ -551,6 +551,24 @@ async function totalInteresesPagadosDeuda() {
     .filter(m => m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión')
     .reduce((s,m)=>s+(+m.importe||0),0);
 }
+async function analizarCosteDeudasVsCuenta() {
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const last = state.interestRates[state.interestRates.length - 1];
+  const tinCuenta = last ? parseFloat(last.tin) : 0;
+  const deudas = await db.deudas.toArray();
+  const res = [];
+  for (const d of deudas) {
+    const saldo = await calcularSaldoPendiente(d);
+    if (saldo <= 0) continue;
+    const tinDeuda = parseFloat(d.tipoInteres || d.tin || d.tae || 0);
+    if (tinDeuda > tinCuenta) {
+      res.push({ nombre: d.descripcion || d.tipo || 'deuda', tinCuenta, tinDeuda });
+    }
+  }
+  return res;
+}
 
 async function registrarHistoricoCartera() {
   const { valorTotal } = await calcularKpis();
@@ -639,9 +657,16 @@ async function renderDashboard() {
   const brokerHtml = Object.entries(brokerRes)
     .map(([b,d]) => `<div>${b}: ${d.count} / ${formatCurrency(d.valor)}</div>`)
     .join('');
+  const amortizaciones = await analizarCosteDeudasVsCuenta();
+  const alertaAmort = amortizaciones.length
+    ? '<div class="alert pendiente">' +
+        amortizaciones.map(a => `💡 Tu cuenta remunera al ${a.tinCuenta}% pero estás pagando un ${a.tinDeuda}% por tu deuda ${a.nombre}. Podrías amortizar para ahorrar intereses.`).join('<br>') +
+      '</div>'
+    : '';
   app.innerHTML = `
     <h2>Panel de control</h2>
     ${objetivo>0?`<div class="alert ${cumplido?'cumplido':'pendiente'}">${cumplido?'🎯 ¡Has alcanzado tu objetivo anual de rentabilidad! <button id="reset-obj" class="btn btn-small">Reiniciar</button>':'Objetivo a '+(objetivo-roi).toFixed(2)+' %'}</div>`:''}
+    ${alertaAmort}
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-icon">💰</div>
@@ -1200,12 +1225,15 @@ async function renderDeudas() {
     </tr>`;
   }));
 
+  const sugerencias = await analizarCosteDeudasVsCuenta();
+
   const tinMedio = totalSaldo ? (sumTinSaldo / totalSaldo).toFixed(2) : 0;
   const proxVencStr = proxVenc ? proxVenc.toISOString().slice(0,10) : '-';
   const tipos = [...new Set(deudas.map(d=>d.tipo).filter(Boolean))];
   let html = `<div class="card">
       <h2>Deudas</h2>
       ${hayAlertas?'<div class="alert pendiente">Hay deudas vencidas o sin pagos recientes</div>':''}
+      ${sugerencias.length?'<div class="alert pendiente">'+sugerencias.map(s=>s).join('<br>')+'</div>':''}
       <div class="filtros-table"><select id="filtro-deuda-tipo"><option value="">Todas</option>${tipos.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-icon">💰</div><div><div>Total pendiente</div><div class="kpi-value">${formatCurrency(totalSaldo)}</div></div></div>
@@ -2617,6 +2645,11 @@ async function mostrarDetalleDeuda(id) {
     const bienId = Number(deuda.inmuebleAsociado);
     const bien = await db.bienes.get(bienId);
     if (bien) resumen += `<p>Valor inmueble: ${formatCurrency(bien.valorActual || bien.valorCompra)}</p>`;
+  }
+  const tinCuenta = state.interestRates[state.interestRates.length-1]?.tin || 0;
+  const tinDeuda = parseFloat(deuda.tipoInteres || deuda.tin || deuda.tae || 0);
+  if (saldo > 0 && tinDeuda > tinCuenta) {
+    resumen += `<div class="alert pendiente">💡 Tu cuenta remunera al ${tinCuenta}% pero estás pagando un ${tinDeuda}% por tu deuda ${deuda.descripcion}. Podrías amortizar para ahorrar intereses.</div>`;
   }
   const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
   cont.innerHTML = `<section class="detalle">
