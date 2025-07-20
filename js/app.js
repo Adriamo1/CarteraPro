@@ -882,14 +882,18 @@ async function activoMayorValor() {
   return max;
 }
 
-function navegar() {
-  const hash = location.hash || "#dashboard";
+function router() {
+  const hash = location.hash || "#inicio";
   const render = vistas[hash];
-  if (render) render();
-  else app.innerHTML = `<div class="card"><h2>Error</h2><p>Ruta desconocida: ${hash}</p></div>`;
-  document.querySelectorAll("aside a").forEach(a =>
-    a.classList.toggle("active", a.getAttribute("href") === hash)
-  );
+  app.innerHTML = "";
+  if (render) {
+    render();
+  } else {
+    app.innerHTML = `<div class="card"><h2>Error</h2><p>Ruta desconocida: ${hash}</p></div>`;
+  }
+  document.querySelectorAll("aside a").forEach(a => {
+    a.classList.toggle("active", a.getAttribute("href") === hash);
+  });
 }
 
 // Vistas
@@ -3725,8 +3729,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   registrarHistoricoCartera();
   registrarHistorialPatrimonio();
   scheduleAutoBackup();
-  navegar();
-  window.addEventListener("hashchange", navegar);
+  router();
+  window.addEventListener("hashchange", router);
   if (localStorage.getItem('backupPendienteImportar')) {
     mostrarModalImportarBackup();
   }
