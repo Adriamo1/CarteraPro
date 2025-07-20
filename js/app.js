@@ -215,21 +215,30 @@ function getUserSetting(key) {
   return ajustesCache[key] ?? null;
 }
 
-function getBrokers() {
-  return getUserSetting("brokers") || [
+function getEntidadesFinancieras() {
+  let list = getUserSetting("entidadesFinancieras");
+  if (Array.isArray(list)) return [...new Set(list.map(s => s.trim()).filter(Boolean))];
+  const brokers = getUserSetting("brokers") || [
     "Trade Republic", "Revolut", "Binance", "DEGIRO",
     "MyInvestor", "Interactive Brokers"
   ];
-}
-function setBrokers(list) { return saveUserSetting("brokers", list); }
-
-function getBancos() {
-  return getUserSetting("bancos") || [
+  const bancos = getUserSetting("bancos") || [
     "BBVA", "CaixaBank", "Santander", "ING",
     "Openbank", "EVO", "Revolut"
   ];
+  list = [...new Set([...brokers, ...bancos])];
+  saveUserSetting("entidadesFinancieras", list);
+  return list;
 }
-function setBancos(list) { return saveUserSetting("bancos", list); }
+function setEntidadesFinancieras(list) {
+  const unique = [...new Set(list.map(s => s.trim()).filter(Boolean))];
+  return saveUserSetting("entidadesFinancieras", unique);
+}
+
+function actualizarDatalistEntidades() {
+  const dl = document.getElementById('lista-entidades');
+  if (dl) dl.innerHTML = getEntidadesFinancieras().map(e => `<option value="${e}">`).join('');
+}
 
 function setTema(tema) {
   document.body.setAttribute("data-theme", tema);
@@ -633,6 +642,12 @@ async function renderActivos() {
   }
   html += '</div>';
   app.innerHTML = html;
+  if (!document.getElementById('lista-entidades')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'lista-entidades';
+    document.body.appendChild(dl);
+  }
+  actualizarDatalistEntidades();
 
   document.getElementById('toggle-activos').onclick = () => {
     setVista('activos', modo === 'detalle' ? 'resumen' : 'detalle');
@@ -842,7 +857,7 @@ async function renderCuentas() {
       <button id="add-mov" class="btn">Añadir movimiento</button>
       <form id="form-cuenta">
         <input name="nombre" placeholder="Nombre" required />
-        <input name="banco" placeholder="Banco" required />
+        <input name="banco" placeholder="Entidad" list="lista-entidades" required />
         <input name="tipo" placeholder="Tipo" value="corriente" required />
         <input name="saldo" placeholder="Saldo" type="number" step="any" value="0" required />
         <button class="btn">Guardar</button>
@@ -871,6 +886,12 @@ async function renderCuentas() {
   }
   html += '</div>';
   app.innerHTML = html;
+  if (!document.getElementById('lista-entidades')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'lista-entidades';
+    document.body.appendChild(dl);
+  }
+  actualizarDatalistEntidades();
 
   document.getElementById('toggle-cuentas').onclick = () => {
     setVista('cuentas', modo === 'detalle' ? 'resumen' : 'detalle');
@@ -1140,8 +1161,7 @@ async function checkForUpdates() {
   }
 }
 function renderAjustes() {
-  const brokers = getBrokers();
-  const bancos = getBancos();
+  const entidades = getEntidadesFinancieras();
   const tema = getTema();
   const idioma = getIdioma();
   const privacidad = getPrivacidad();
@@ -1188,12 +1208,8 @@ function renderAjustes() {
           <input id="api-key-av" type="text" value="${apiKey}">
         </div>
         <div class="form-group">
-          <label for="brokers-list">Brokers</label>
-          <textarea id="brokers-list" rows="3">${brokers.join('\n')}</textarea>
-        </div>
-        <div class="form-group">
-          <label for="banks-list">Bancos</label>
-          <textarea id="banks-list" rows="3">${bancos.join('\n')}</textarea>
+          <label for="entidades-list">Entidades financieras</label>
+          <textarea id="entidades-list" rows="4">${entidades.join('\n')}</textarea>
         </div>
         <div class="form-group">
           <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''}/> Modo privacidad</label>
@@ -1247,8 +1263,10 @@ function renderAjustes() {
         setSavebackRate(saveVal),
         setTipoCambio(tcVal),
         setApiKeyAv(document.getElementById('api-key-av').value.trim()),
-        setBrokers(document.getElementById('brokers-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
-        setBancos(document.getElementById('banks-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
+        setEntidadesFinancieras(
+          document.getElementById('entidades-list').value
+            .split('\n').map(s => s.trim()).filter(Boolean)
+        ),
         setPrivacidad(document.getElementById('chk-privacidad').checked)
       ]);
       msg.textContent = 'Ajustes guardados correctamente';
@@ -1954,8 +1972,8 @@ function crearModalTransaccion() {
         <button type="button" class="btn" id="btn-precio">📈 Obtener precio actual</button>
         <div id="currency-info" class="mini-explica"></div>
         <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
-        <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
-        <datalist id="lista-brokers"></datalist>
+        <input name="broker" id="inp-broker" list="lista-entidades" placeholder="Entidad" />
+        <datalist id="lista-entidades"></datalist>
         <div id="rate-info" class="mini-explica"></div>
         <div id="total-eur" class="mini-explica"></div>
         <button class="btn">Guardar</button>
@@ -1970,9 +1988,7 @@ async function mostrarModalTransaccion(activos, trans) {
   const modal = document.getElementById('transaction-modal');
   const lista = document.getElementById('sel-activo');
   lista.innerHTML = activos.map(a => `<option value="${a.id}" data-ticker="${a.ticker}" data-moneda="${a.moneda}" data-tipo="${a.tipo}">${a.nombre}</option>`).join('');
-  const brokers = getBrokers();
-  const dl = document.getElementById('lista-brokers');
-  dl.innerHTML = brokers.map(b => `<option value="${b}">`).join('');
+  actualizarDatalistEntidades();
   modal.classList.remove('hidden');
 
   const form = document.getElementById('form-transaccion');
@@ -2065,7 +2081,7 @@ function crearModalDeuda() {
           <option value="Hipoteca">Hipoteca</option>
         </select>
         <input name="descripcion" placeholder="Descripción" required />
-        <input name="entidad" id="inp-entidad" list="lista-bancos" placeholder="Entidad" />
+        <input name="entidad" id="inp-entidad" list="lista-entidades" placeholder="Entidad" />
         <input type="date" name="fechaInicio" required />
         <input type="date" name="fechaVencimiento" />
         <input type="number" step="any" name="capitalInicial" placeholder="Capital inicial" required />
@@ -2078,9 +2094,9 @@ function crearModalDeuda() {
       </form>
     </div>`;
   document.body.appendChild(div);
-  if (!document.getElementById('lista-bancos')) {
+  if (!document.getElementById('lista-entidades')) {
     const dl = document.createElement('datalist');
-    dl.id = 'lista-bancos';
+    dl.id = 'lista-entidades';
     document.body.appendChild(dl);
   }
 }
@@ -2089,8 +2105,7 @@ function mostrarModalDeuda(deuda) {
   crearModalDeuda();
   const modal = document.getElementById('deuda-modal');
   const form = document.getElementById('form-deuda');
-  const dl = document.getElementById('lista-bancos');
-  dl.innerHTML = getBancos().map(b => `<option value="${b}">`).join('');
+  actualizarDatalistEntidades();
   if (deuda) {
     modal.querySelector('h3').textContent = 'Editar deuda';
     Object.keys(deuda).forEach(k => {
