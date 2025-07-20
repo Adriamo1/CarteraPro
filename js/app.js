@@ -171,29 +171,6 @@ async function borrarEntidad(nombre, id) {
   scheduleSave();
 }
 
-db.on('changes', changes => {
-  if (!appState) return;
-  for (const ch of changes) {
-    let name = ch.table;
-    if (name === 'deudaMovimientos') name = 'movimientosDeuda';
-    if (name === 'prestamos') name = 'deudas';
-    if (!appState[name]) continue;
-    if (ch.type === 1 || ch.type === 'create') {
-      appState[name].push({ ...(ch.obj || {}), id: ch.key });
-    } else if (ch.type === 2 || ch.type === 'update') {
-      const idx = appState[name].findIndex(e => e.id === ch.key);
-      if (idx >= 0) Object.assign(appState[name][idx], ch.obj || ch.mods || {});
-    } else if (ch.type === 3 || ch.type === 'delete') {
-      appState[name] = appState[name].filter(e => e.id !== ch.key);
-    }
-  }
-  if (changes.some(c => ['assets','transactions','movimientos','cuentas','deudas','deudaMovimientos'].includes(c.table))) {
-    registrarHistoricoCartera();
-    registrarHistorialPatrimonio();
-  }
-  scheduleSave();
-});
-
 
 const app = document.getElementById("app");
 
