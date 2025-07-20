@@ -71,6 +71,9 @@ db.version(4).stores({
 db.version(5).stores({
   deudaHistory: "++id, deudaId, fecha, saldo"
 });
+db.version(6).stores({
+  deudas: "++id, tipo, descripcion, entidad, fechaInicio, fechaVencimiento, capitalInicial, tipoInteres, interesFijo, inmuebleAsociado, notas, pagoAutomatico"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -2630,6 +2633,7 @@ function crearModalDeuda() {
         <input type="number" step="any" min="0" name="capitalInicial" placeholder="Capital inicial" required />
         <input type="number" step="any" min="0" name="tipoInteres" placeholder="TIN %" required />
         <label><input type="checkbox" name="interesFijo" /> Interés fijo</label>
+        <label><input type="checkbox" name="pagoAutomatico" /> Pago automático mensual</label>
         <input name="inmuebleAsociado" placeholder="Inmueble (si hipoteca)" />
         <textarea name="notas" placeholder="Notas"></textarea>
         <button class="btn">Guardar</button>
@@ -2655,6 +2659,7 @@ function mostrarModalDeuda(deuda) {
       if (form[k] !== undefined) form[k].value = deuda[k] || '';
     });
     form.interesFijo.checked = !!deuda.interesFijo;
+    form.pagoAutomatico.checked = !!deuda.pagoAutomatico;
     form.dataset.id = deuda.id;
   } else {
     modal.querySelector('h3').textContent = 'Nueva deuda';
@@ -2670,6 +2675,7 @@ function mostrarModalDeuda(deuda) {
     data.capitalInicial = parseFloat(data.capitalInicial);
     data.tipoInteres = parseFloat(data.tipoInteres);
     data.interesFijo = form.interesFijo.checked;
+    data.pagoAutomatico = form.pagoAutomatico.checked;
     const entidades = getEntidadesFinancieras();
     if (!entidades.includes(data.entidad)) { alert('Selecciona una entidad válida'); return; }
     if (isNaN(data.capitalInicial) || data.capitalInicial <= 0) { alert('Importe inválido'); return; }
@@ -2856,6 +2862,32 @@ async function registrarCuotaAutomatica(id, fecha) {
   await registrarHistoricoDeuda(id, f);
 }
 
+async function procesarPagosAutomaticos() {
+  const [deudas, movs] = await Promise.all([
+    db.deudas.where('pagoAutomatico').equals(1).toArray(),
+    db.movimientosDeuda.toArray()
+  ]);
+  const hoy = new Date();
+  for (const d of deudas) {
+    const lista = movs
+      .filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'))
+      .sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
+    let fecha = lista[0] ? new Date(lista[0].fecha) : new Date(d.fechaInicio || hoy);
+    if (isNaN(fecha)) fecha = hoy;
+    fecha.setMonth(fecha.getMonth() + 1);
+    while (fecha <= hoy) {
+      const fstr = fecha.toISOString().slice(0,10);
+      const existe = movs.some(m => m.deudaId === d.id && m.fecha === fstr && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'));
+      if (!existe) {
+        await registrarCuotaAutomatica(d.id, fstr);
+        movs.push({ deudaId: d.id, fecha: fstr, tipoMovimiento: 'Pago capital' });
+      }
+      fecha.setMonth(fecha.getMonth() + 1);
+      if (d.fechaVencimiento && new Date(d.fechaVencimiento) < fecha) break;
+    }
+  }
+}
+
 async function mostrarDetalleDeuda(id) {
   const cont = document.getElementById('detalle-deuda');
   const deuda = await db.deudas.get(id);
@@ -2878,6 +2910,7 @@ async function mostrarDetalleDeuda(id) {
   if (saldo > 0 && tinDeuda > tinCuenta) {
     resumen += `<div class="alert pendiente">💡 Tu cuenta remunera al ${tinCuenta}% pero estás pagando un ${tinDeuda}% por tu deuda ${deuda.descripcion}. Podrías amortizar para ahorrar intereses.</div>`;
   }
+  resumen += `<p>Pago automático: ${deuda.pagoAutomatico ? 'Sí' : 'No'} <button id="toggle-auto" class="btn btn-small">${deuda.pagoAutomatico ? 'Desactivar' : 'Activar'}</button></p>`;
   const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
   cont.innerHTML = `<section class="detalle">
       ${resumen}
@@ -2903,6 +2936,12 @@ async function mostrarDetalleDeuda(id) {
       plazo: (plazoMeses / 12),
       frecuencia: 12
     });
+  };
+  document.getElementById('toggle-auto').onclick = async () => {
+    deuda.pagoAutomatico = !deuda.pagoAutomatico;
+    await actualizarEntidad('deudas', deuda);
+    mostrarDetalleDeuda(id);
+    renderDeudas();
   };
   cont.querySelectorAll('.edit-dmov').forEach(b => b.onclick = async () => {
     const mv = await db.movimientosDeuda.get(Number(b.dataset.id));
@@ -3215,6 +3254,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.deudas = await db.deudas.toArray();
   state.movimientosDeuda = await db.movimientosDeuda.toArray();
   state.deudaHistory = await db.deudaHistory.toArray();
+  await procesarPagosAutomaticos();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
