@@ -65,6 +65,9 @@ db.version(3).stores({
   backups: "++id, fecha",
   prestamos: null
 }).upgrade(tx => tx.table('prestamos').toArray(p => tx.table('deudas').bulkAdd(p)));
+db.version(4).stores({
+  portfolioHistory: "++id, fecha, valorTotal, saldoCuenta"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -79,7 +82,7 @@ const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
   'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'deudaMovimientos', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings', 'backups'
+  'interestRates', 'settings', 'backups', 'portfolioHistory'
 ];
 
 const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
@@ -147,6 +150,9 @@ db.on('changes', changes => {
       appState[name] = appState[name].filter(e => e.id !== ch.key);
     }
   }
+  if (changes.some(c => ['assets','transactions','movimientos','cuentas'].includes(c.table))) {
+    registrarHistoricoCartera();
+  }
 });
 
 
@@ -154,6 +160,7 @@ const app = document.getElementById("app");
 const state = {
   accountMovements: [],
   interestRates: [],
+  portfolioHistory: [],
   settings: { lastExchangeUpdate: null }
 };
 const hasChart = typeof Chart !== 'undefined';
@@ -353,6 +360,7 @@ async function calcularKpis() {
   });
   const unrealized = valorActivos - costeRestante;
   const rentTotal = realized + unrealized;
+  const costeTotal = Object.values(compras).reduce((s,c)=>s+c.coste,0);
 
   const valorPorTipo = activos.reduce((acc, a) => {
     const val = +a.valorActual || 0;
@@ -360,7 +368,7 @@ async function calcularKpis() {
     return acc;
   }, {});
 
-  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo };
+  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal };
 }
 
 async function calcularInteresMes() {
@@ -396,6 +404,79 @@ async function calcularInteresMes() {
     }
   }
   return total;
+}
+
+async function calcularInteresMesArgs(anyo, mes) {
+  const hoy = new Date();
+  const diasMes = (anyo === hoy.getFullYear() && mes === hoy.getMonth())
+    ? hoy.getDate()
+    : new Date(anyo, mes + 1, 0).getDate();
+  const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
+  if (!cuentas.length) return 0;
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const rates = state.interestRates.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const inicioMes = `${anyo}-${String(mes+1).padStart(2,'0')}-01`;
+  let total = 0;
+  for (const cuenta of cuentas) {
+    let saldo = (+cuenta.saldo || 0) +
+      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha < inicioMes)
+          .reduce((s,m)=>s+(+m.importe||0),0);
+    for (let d=1; d<=diasMes; d++) {
+      const fechaDia = `${anyo}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const rate = rates.filter(r=>r.fecha<=fechaDia).pop();
+      const tin = rate ? parseFloat(rate.tin) : 0;
+      total += saldo * (tin/100) / 365;
+      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha===fechaDia)
+          .forEach(mov => { saldo += (+mov.importe||0); });
+    }
+  }
+  return total;
+}
+
+async function calcularInteresAnual() {
+  const hoy = new Date();
+  let total = 0;
+  for (let m = 0; m <= hoy.getMonth(); m++) {
+    total += await calcularInteresMesArgs(hoy.getFullYear(), m);
+  }
+  return total;
+}
+
+async function calcularApy() {
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const rate = state.interestRates[state.interestRates.length - 1];
+  const tin = rate ? parseFloat(rate.tin) : 0;
+  return Math.pow(1 + tin / 100 / 12, 12) - 1;
+}
+
+async function saldoMedioAnual() {
+  const hoy = new Date();
+  const anyo = hoy.getFullYear();
+  if (!state.accountMovements.length) {
+    state.accountMovements = await db.movimientos.toArray();
+  }
+  const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
+  if (!cuentas.length) return 0;
+  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  let totalInicio = 0;
+  let totalFin = 0;
+  for (const cuenta of cuentas) {
+    const saldoFin = +cuenta.saldo || 0;
+    const movYear = movs.filter(m=>m.cuentaId==cuenta.id && m.fecha>=`${anyo}-01-01`);
+    const delta = movYear.reduce((s,m)=>s+(+m.importe||0),0);
+    const saldoIni = saldoFin - delta;
+    totalInicio += saldoIni;
+    totalFin += saldoFin;
+  }
+  return (totalInicio + totalFin) / 2;
 }
 
 async function totalSavebackPendiente() {
@@ -435,6 +516,22 @@ async function totalDividendos() {
       return t === 'dividendo' || t === 'ingreso';
     })
     .reduce((s,i)=>s+(+i.importe||0),0);
+}
+
+async function registrarHistoricoCartera() {
+  const { valorTotal } = await calcularKpis();
+  const cuentas = await db.cuentas.toArray();
+  const saldoCuenta = cuentas.reduce((s,c)=>s+(+c.saldo||0),0);
+  const fecha = new Date().toISOString().slice(0,10);
+  const existente = await db.portfolioHistory.where('fecha').equals(fecha).first();
+  if (existente) {
+    await db.portfolioHistory.update(existente.id, { valorTotal, saldoCuenta });
+  } else {
+    const id = await db.portfolioHistory.add({ fecha, valorTotal, saldoCuenta });
+    if (appState && appState.portfolioHistory) {
+      appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta });
+    }
+  }
 }
 
 // Agrupa activos por broker contando número y valor
@@ -487,8 +584,10 @@ function renderResumen() {
 }
 
 async function renderDashboard() {
-  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
+  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal } = await calcularKpis();
   const interesMes = await calcularInteresMes();
+  const interesAnual = await calcularInteresAnual();
+  const apy = await calcularApy();
   const savePend = await totalSavebackPendiente();
   const efectoDivisa = await calcularEfectoDivisa();
   const dividendos = await totalDividendos();
@@ -496,6 +595,9 @@ async function renderDashboard() {
   const mayor = await activoMayorValor();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
+  const roi = costeTotal ? (rentTotal / costeTotal) * 100 : 0;
+  const objetivo = getObjetivoRentabilidad();
+  const cumplido = roi >= objetivo && objetivo > 0;
   const brokerHtml = Object.entries(brokerRes)
     .map(([b,d]) => `<div>${b}: ${d.count} / ${formatCurrency(d.valor)}</div>`)
     .join('');
@@ -530,6 +632,15 @@ async function renderDashboard() {
         <div>
           <div>Interés devengado (mes)</div>
           <div class="kpi-value">${formatCurrency(interesMes)}</div>
+          <div>Interés anual</div>
+          <div class="kpi-value">${formatCurrency(interesAnual)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🎯</div>
+        <div>
+          <div>Rentabilidad cartera</div>
+          <div class="kpi-value ${roi>=0?'kpi-positivo':'kpi-negativo'}">${roi.toFixed(2)}% ${cumplido?'🏆':''}</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -850,9 +961,22 @@ function renderTransacciones() {
 
 async function renderCuentas() {
   const cuentas = await db.cuentas.toArray();
+  const tinActual = state.interestRates[state.interestRates.length-1]?.tin || 0;
+  const tae = (await calcularApy())*100;
+  const interesMes = await calcularInteresMes();
+  const interesAnual = await calcularInteresAnual();
+  const saldoMedio = await saldoMedioAnual();
+  const rentEfec = saldoMedio ? (interesAnual / saldoMedio) * 100 : 0;
   const modo = getVista('cuentas');
   let html = `<div class="card">
       <h2>Cuentas</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN actual</div><div class="kpi-value">${tinActual}%</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">🔄</div><div><div>TAE estimada</div><div class="kpi-value">${tae.toFixed(2)}%</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">💵</div><div><div>Interés mes</div><div class="kpi-value">${formatCurrency(interesMes)}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Interés anual</div><div class="kpi-value">${formatCurrency(interesAnual)}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon">✅</div><div><div>Rent. efectiva</div><div class="kpi-value">${rentEfec.toFixed(2)}%</div></div></div>
+      </div>
       <button id="toggle-cuentas" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <button id="add-mov" class="btn">Añadir movimiento</button>
       <form id="form-cuenta">
@@ -1418,6 +1542,13 @@ async function datosAsignacion() {
 }
 
 async function datosEvolucionCartera() {
+  const hist = await db.portfolioHistory.orderBy('fecha').toArray();
+  if (hist.length) {
+    return {
+      labels: hist.map(h=>h.fecha),
+      data: hist.map(h=>h.valorTotal)
+    };
+  }
   const trans = await db.transacciones.toArray();
   if (!trans.length) return { labels: [], data: [] };
   trans.sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
@@ -2513,8 +2644,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   await cargarEstado();
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
+  state.portfolioHistory = await db.portfolioHistory.toArray();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
+  registrarHistoricoCartera();
   scheduleAutoBackup();
   navegar();
   window.addEventListener("hashchange", navegar);
