@@ -320,6 +320,7 @@ const vistas = {
   "#analisisvalue": renderAnalisisValue,
   "#glosario": renderGlosario,
   "#info": renderInfo,
+  "#debug": renderDebug,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
@@ -1531,6 +1532,24 @@ function renderGlosario() {
   const lista = Object.entries(defs)
     .map(([t,d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('');
   app.innerHTML = `<div class="card"><h2>Glosario financiero</h2><dl>${lista}</dl></div>`;
+}
+
+async function renderDebug() {
+  if (!appState) await cargarEstado();
+  const size = JSON.stringify(appState).length;
+  const assets = appState.assets.length;
+  const trans = appState.transactions.length;
+  const lastTc = state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A';
+  const lastHist = appState.portfolioHistory.slice(-1)[0]?.fecha || 'N/A';
+  app.innerHTML = `
+    <div class="card">
+      <h2>Estado de la app</h2>
+      <p>Tamaño del state: ${size} bytes</p>
+      <p>Activos registrados: ${assets}</p>
+      <p>Transacciones registradas: ${trans}</p>
+      <p>Última actualización de TC: ${lastTc}</p>
+      <p>Último histórico de cartera: ${lastHist}</p>
+    </div>`;
 }
 
 // --------- Gráficos Dashboard ---------
