@@ -828,15 +828,19 @@ async function renderCuentas() {
   } else {
       for (const c of cuentas) {
         const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
-        const filas = movs.map(m => `<tr>
+        const filas = movs.map(m => `<tr data-id="${m.id}">
             <td data-label="Fecha">${m.fecha}</td>
             <td data-label="Importe">${formatCurrency(m.importe)}</td>
             <td data-label="Concepto" class="col-ocultar">${m.descripcion||''}</td>
+            <td>
+              <button class="btn btn-small edit-mov" data-id="${m.id}">✏️</button>
+              <button class="btn btn-small del-mov" data-id="${m.id}">🗑️</button>
+            </td>
           </tr>`).join('');
         const interes = (c.saldo || 0) * 0.01;
         html += `<section class="detalle">
           <h3>${c.nombre}</h3>
-          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th><th></th></tr></thead><tbody>${filas}</tbody></table>
           <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
         </section>`;
       }
@@ -852,6 +856,35 @@ async function renderCuentas() {
   document.getElementById('add-mov').onclick = () => {
     mostrarModalMovimiento(cuentas);
   };
+
+  function attachMovHandlers() {
+    document.querySelectorAll('.edit-mov').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const mov = await db.movimientos.get(id);
+        if (mov) mostrarModalMovimiento(cuentas, mov);
+      };
+    });
+    document.querySelectorAll('.del-mov').forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.id);
+        const row = btn.closest('tr');
+        mostrarConfirmacion('¿Eliminar este movimiento?', async () => {
+          const mov = await db.movimientos.get(id);
+          await borrarEntidad('movimientos', id);
+          if (mov) {
+            const c = await db.cuentas.get(mov.cuentaId);
+            await db.cuentas.update(mov.cuentaId, { saldo: (+c.saldo || 0) - mov.importe });
+          }
+          row.remove();
+          renderCuentas();
+          if (location.hash === '#dashboard') renderDashboard();
+        });
+      };
+    });
+  }
+
+  attachMovHandlers();
 
   document.getElementById('form-cuenta').onsubmit = e => {
     e.preventDefault();
@@ -1754,49 +1787,83 @@ function crearModalMovimiento() {
   document.body.appendChild(div);
 }
 
-async function mostrarModalMovimiento(cuentas) {
+async function mostrarModalMovimiento(cuentas, mov) {
   crearModalMovimiento();
   const modal = document.getElementById('mov-modal');
+  const form = document.getElementById('form-mov');
   const lista = document.getElementById('sel-cuenta');
   lista.innerHTML = cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+  if (mov) {
+    modal.querySelector('h3').textContent = 'Editar movimiento';
+    form.cuentaId.value = mov.cuentaId;
+    form.fecha.value = mov.fecha || '';
+    form.importe.value = mov.importe;
+    form.tipo.value = mov.tipo;
+    form.descripcion.value = mov.descripcion || '';
+    form.dataset.id = mov.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nuevo movimiento';
+    form.reset();
+    form.dataset.id = '';
+  }
+
   modal.classList.remove('hidden');
 
   modal.querySelector('#cancel-mov').onclick = () => {
     modal.classList.add('hidden');
   };
 
-  modal.querySelector('#form-mov').onsubmit = async e => {
+  form.onsubmit = async e => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
     data.cuentaId = parseInt(data.cuentaId);
     data.importe = parseFloat(data.importe);
-    const cuenta = await db.cuentas.get(data.cuentaId);
-    const mov = {
-      cuentaId: data.cuentaId,
-      fecha: data.fecha,
-      importe: data.importe,
-      descripcion: data.descripcion || '',
-      tipo: data.tipo
-    };
-    const id = await db.movimientos.add(mov);
-    mov.id = id;
-    state.accountMovements.push(mov);
-    await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
 
-    if (data.tipo === 'Gasto Tarjeta') {
-      const porcentaje = getSavebackRate();
-      const importeSave = Math.abs(data.importe) * (porcentaje / 100);
-      const movSave = {
+    const id = form.dataset.id;
+    if (id) {
+      const anterior = await db.movimientos.get(Number(id));
+      await actualizarEntidad('movimientos', { ...data, id: Number(id) });
+      if (anterior) {
+        if (anterior.cuentaId === data.cuentaId) {
+          const c = await db.cuentas.get(data.cuentaId);
+          await db.cuentas.update(data.cuentaId, { saldo: (+c.saldo || 0) - anterior.importe + data.importe });
+        } else {
+          const cOld = await db.cuentas.get(anterior.cuentaId);
+          const cNew = await db.cuentas.get(data.cuentaId);
+          await db.cuentas.update(anterior.cuentaId, { saldo: (+cOld.saldo || 0) - anterior.importe });
+          await db.cuentas.update(data.cuentaId, { saldo: (+cNew.saldo || 0) + data.importe });
+        }
+      }
+    } else {
+      const cuenta = await db.cuentas.get(data.cuentaId);
+      const obj = {
         cuentaId: data.cuentaId,
         fecha: data.fecha,
-        importe: importeSave,
-        descripcion: 'Saveback pendiente',
-        tipo: 'Saveback pendiente'
+        importe: data.importe,
+        descripcion: data.descripcion || '',
+        tipo: data.tipo
       };
-      const id2 = await db.movimientos.add(movSave);
-      movSave.id = id2;
-      state.accountMovements.push(movSave);
+      const newId = await db.movimientos.add(obj);
+      obj.id = newId;
+      state.accountMovements.push(obj);
+      await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
+
+      if (data.tipo === 'Gasto Tarjeta') {
+        const porcentaje = getSavebackRate();
+        const importeSave = Math.abs(data.importe) * (porcentaje / 100);
+        const movSave = {
+          cuentaId: data.cuentaId,
+          fecha: data.fecha,
+          importe: importeSave,
+          descripcion: 'Saveback pendiente',
+          tipo: 'Saveback pendiente'
+        };
+        const id2 = await db.movimientos.add(movSave);
+        movSave.id = id2;
+        state.accountMovements.push(movSave);
+      }
     }
 
     modal.classList.add('hidden');
