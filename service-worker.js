@@ -10,7 +10,6 @@ const urlsToCache = [
   // Añade tus scripts si quieres cachearlos:
   '/js/app.js',
   '/version.json'
-  // Añade widgets y vistas según vayas completando
 ];
 
 self.addEventListener('install', function(event) {
