@@ -75,12 +75,13 @@ db.ingresos = db.income;
 db.tiposCambio = db.exchangeRates;
 db.ajustes = db.settings;
 db.prestamos = db.deudas;
+db.movimientosDeuda = db.deudaMovimientos;
 // Para compatibilidad con versiones anteriores
 window.db = db;
 
 const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
-  'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'deudaMovimientos', 'seguros',
+  'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'movimientosDeuda', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
   'interestRates', 'settings', 'backups', 'portfolioHistory'
 ];
@@ -161,6 +162,8 @@ const state = {
   accountMovements: [],
   interestRates: [],
   portfolioHistory: [],
+  deudas: [],
+  movimientosDeuda: [],
   settings: { lastExchangeUpdate: null }
 };
 const hasChart = typeof Chart !== 'undefined';
@@ -1120,7 +1123,7 @@ async function renderCuentas() {
 
 async function renderDeudas() {
   const deudas = await db.deudas.toArray();
-  const movs = await db.deudaMovimientos.toArray();
+  const movs = await db.movimientosDeuda.toArray();
   let totalSaldo = 0, totalIntereses = 0;
   const filas = await Promise.all(deudas.map(async d => {
     const pagos = movs.filter(m => m.deudaId === d.id && m.tipoMovimiento === 'Pago capital')
@@ -1163,7 +1166,7 @@ async function renderDeudas() {
   document.querySelectorAll('.del-deuda').forEach(b => b.onclick = () => {
     const id = Number(b.dataset.id);
     mostrarConfirmacion('¿Eliminar esta deuda?', async () => {
-      await db.deudaMovimientos.where('deudaId').equals(id).delete();
+      await db.movimientosDeuda.where('deudaId').equals(id).delete();
       await borrarEntidad('deudas', id);
       renderDeudas();
     });
@@ -2405,33 +2408,78 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     data.deudaId = Number(data.deudaId);
     data.importe = parseFloat(data.importe);
     const id = form.dataset.id;
-    if (id) await actualizarEntidad('deudaMovimientos', { ...data, id: Number(id) });
-    else await db.deudaMovimientos.add(data);
+    if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
+    else await db.movimientosDeuda.add(data);
     modal.classList.add('hidden');
     mostrarDetalleDeuda(data.deudaId);
     renderDeudas();
   };
 }
 
+function diffMeses(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+}
+
+async function calcularAmortizacionDeuda(id) {
+  const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
+  if (!deuda) return null;
+  const movs = await db.movimientosDeuda.where('deudaId').equals(deuda.id).toArray();
+  const amortizado = movs.filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
+    .reduce((s,m)=>s+(+m.importe||0),0);
+  const pagosRealizados = movs.filter(m => m.tipoMovimiento === 'Pago capital').length;
+  const pendiente = (+deuda.capitalInicial || 0) - amortizado;
+  const totalMeses = deuda.fechaInicio && deuda.fechaVencimiento ?
+      diffMeses(new Date(deuda.fechaInicio), new Date(deuda.fechaVencimiento)) : 1;
+  const mesesRestantes = Math.max(1, totalMeses - pagosRealizados);
+  const i = (parseFloat(deuda.tipoInteres || deuda.tin || 0) / 100) / 12;
+  const cuota = pendiente * i / (1 - Math.pow(1 + i, -mesesRestantes));
+  const interes = pendiente * i;
+  const capital = cuota - interes;
+  return { cuota, interes, capital, mesesRestantes, capitalPendiente: pendiente };
+}
+
+async function registrarCuotaAutomatica(id, fecha) {
+  const info = await calcularAmortizacionDeuda(id);
+  if (!info) return;
+  const f = fecha || new Date().toISOString().slice(0,10);
+  await db.movimientosDeuda.bulkAdd([
+    { deudaId: id, fecha: f, tipoMovimiento: 'Pago interés', importe: parseFloat(info.interes.toFixed(2)) },
+    { deudaId: id, fecha: f, tipoMovimiento: 'Pago capital', importe: parseFloat(info.capital.toFixed(2)) }
+  ]);
+}
+
 async function mostrarDetalleDeuda(id) {
   const cont = document.getElementById('detalle-deuda');
   const deuda = await db.deudas.get(id);
-  const movs = await db.deudaMovimientos.where('deudaId').equals(id).toArray();
+  const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
   const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
   cont.innerHTML = `<section class="detalle">
       <h3>${deuda.descripcion}</h3>
       <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th class="col-ocultar">Nota</th><th></th></tr></thead><tbody>${filas}</tbody></table>
       <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
+      <button class="btn" id="reg-cuota">Registrar cuota</button>
+      <button class="btn" id="sim-cuota">Simular cuota</button>
     </section>`;
   document.getElementById('add-mov-deuda').onclick = () => mostrarModalDeudaMovimiento(id);
+  document.getElementById('reg-cuota').onclick = async () => {
+    const fecha = prompt('Fecha', new Date().toISOString().slice(0,10));
+    if (!fecha) return;
+    await registrarCuotaAutomatica(id, fecha);
+    mostrarDetalleDeuda(id);
+    renderDeudas();
+  };
+  document.getElementById('sim-cuota').onclick = async () => {
+    const info = await calcularAmortizacionDeuda(id);
+    if (info) alert(`Cuota: ${formatCurrency(info.cuota)}\nInterés: ${formatCurrency(info.interes)}\nCapital: ${formatCurrency(info.capital)}\nRestan ${info.mesesRestantes} cuotas`);
+  };
   cont.querySelectorAll('.edit-dmov').forEach(b => b.onclick = async () => {
-    const mv = await db.deudaMovimientos.get(Number(b.dataset.id));
+    const mv = await db.movimientosDeuda.get(Number(b.dataset.id));
     if (mv) mostrarModalDeudaMovimiento(id, mv);
   });
   cont.querySelectorAll('.del-dmov').forEach(b => b.onclick = () => {
     const movId = Number(b.dataset.id);
     mostrarConfirmacion('¿Borrar movimiento?', async () => {
-      await borrarEntidad('deudaMovimientos', movId);
+      await borrarEntidad('movimientosDeuda', movId);
       mostrarDetalleDeuda(id);
       renderDeudas();
     });
@@ -2731,6 +2779,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   state.portfolioHistory = await db.portfolioHistory.toArray();
+  state.deudas = await db.deudas.toArray();
+  state.movimientosDeuda = await db.movimientosDeuda.toArray();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
