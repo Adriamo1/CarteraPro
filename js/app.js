@@ -7,6 +7,7 @@ const state = {
   interestRates: [],
   settings: { lastExchangeUpdate: null }
 };
+const hasChart = typeof Chart !== 'undefined';
 
 // Cola simple para peticiones API secuenciales
 const apiQueue = [];
@@ -571,7 +572,7 @@ async function renderActivos() {
     attachRowHandlers();
   }
 
-  if (modo === 'detalle') {
+  if (hasChart && modo === 'detalle') {
     for (const a of activos) {
       const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
       const ctx = document.getElementById(`graf-act-${a.id}`).getContext('2d');
@@ -1172,6 +1173,7 @@ async function datosEvolucionCartera() {
 }
 
 async function renderGraficosDashboard() {
+  if (!hasChart) return;
   const pnl = await calcularPnLPorActivo();
   const ctxPnl = document.getElementById('grafico-pnl').getContext('2d');
   new Chart(ctxPnl, {
