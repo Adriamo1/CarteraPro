@@ -1,14 +1,14 @@
 // app.js sin módulos, todo local
 // Definición principal de la base de datos usando Dexie
-const db = new Dexie('carteraPRO');
+const db = new Dexie('cartera-pro');
 db.version(1).stores({
-  activos: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
-  transacciones: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
   movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
   cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
   tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
-  gastos: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
-  ingresos: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
   suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
   bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
   prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
@@ -17,12 +17,78 @@ db.version(1).stores({
   carteras: "++id, nombre, descripcion, propietario, activos",
   documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
   logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
-  tiposCambio: "++id, moneda, tasa, fecha",
+  exchangeRates: "++id, moneda, tasa, fecha",
   interestRates: "++id, fecha, tin",
-  ajustes: "clave, valor"
+  settings: "clave, valor"
 });
+db.activos = db.assets;
+db.transacciones = db.transactions;
+db.gastos = db.expenses;
+db.ingresos = db.income;
+db.tiposCambio = db.exchangeRates;
+db.ajustes = db.settings;
 // Para compatibilidad con versiones anteriores
 window.db = db;
+
+const DEFAULT_DATA = {
+  assets: [],
+  transactions: [],
+  income: [],
+  expenses: [],
+  exchangeRates: [],
+  settings: []
+};
+
+let appState = null;
+
+async function cargarEstado() {
+  const datos = {};
+  for (const ent of ['assets','transactions','income','expenses','exchangeRates','settings']) {
+    datos[ent] = await db[ent].toArray();
+  }
+  if (Object.values(datos).every(arr => arr.length === 0)) {
+    await guardarEstado(DEFAULT_DATA);
+    Object.assign(datos, JSON.parse(JSON.stringify(DEFAULT_DATA)));
+  }
+  appState = datos;
+  return datos;
+}
+
+async function guardarEstado(estado) {
+  const data = estado || appState;
+  if (!data) return;
+  await Promise.all([
+    db.assets.bulkPut(data.assets || []),
+    db.transactions.bulkPut(data.transactions || []),
+    db.income.bulkPut(data.income || []),
+    db.expenses.bulkPut(data.expenses || []),
+    db.exchangeRates.bulkPut(data.exchangeRates || []),
+    db.settings.bulkPut(data.settings || [])
+  ]);
+}
+
+async function actualizarEntidad(nombre, objeto) {
+  const store = db[nombre];
+  if (!store) throw new Error('Entidad no válida');
+  const id = await store.put(objeto);
+  if (appState && appState[nombre]) {
+    const idx = appState[nombre].findIndex(e => e.id === id);
+    if (idx >= 0) appState[nombre][idx] = { ...objeto, id };
+    else appState[nombre].push({ ...objeto, id });
+  }
+  await guardarEstado(appState);
+  return id;
+}
+
+async function borrarEntidad(nombre, id) {
+  const store = db[nombre];
+  if (!store) throw new Error('Entidad no válida');
+  await store.delete(id);
+  if (appState && appState[nombre]) {
+    appState[nombre] = appState[nombre].filter(e => e.id !== id);
+  }
+  await guardarEstado(appState);
+}
 
 
 const app = document.getElementById("app");
@@ -518,7 +584,7 @@ async function renderActivos() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
-    db.activos.add(data).then(renderActivos);
+    actualizarEntidad('assets', data).then(renderActivos);
   };
 
   document.getElementById("exportar-activos").onclick = async () => {
@@ -549,7 +615,7 @@ async function renderActivos() {
         const row = btn.closest('tr');
         mostrarConfirmacion('¿Eliminar este activo?', async () => {
           await db.transacciones.where('activoId').equals(id).delete();
-          await db.activos.delete(id);
+          await borrarEntidad('assets', id);
           row.remove();
         });
       };
@@ -658,7 +724,7 @@ function renderTransacciones() {
           const id = Number(btn.dataset.id);
           const row = btn.closest('tr');
           mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
-            await db.transacciones.delete(id);
+            await borrarEntidad('transactions', id);
             row.remove();
           });
         };
@@ -1429,7 +1495,7 @@ function mostrarModalEditarActivo(activo) {
     const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
     const id = Number(form.dataset.id);
-    await db.activos.update(id, data);
+    await actualizarEntidad('assets', { ...data, id });
     actualizarFilaActivo(id, data);
     modal.classList.add('hidden');
   };
@@ -1655,7 +1721,8 @@ async function mostrarModalTransaccion(activos, trans) {
     data.precio = parseFloat(data.precio);
     data.comision = parseFloat(data.comision) || 0;
     const id = form.dataset.id;
-    const prom = id ? db.transacciones.update(Number(id), data) : db.transacciones.add(data);
+    const prom = id ? actualizarEntidad('transactions', { ...data, id: Number(id) })
+                    : actualizarEntidad('transactions', data);
     prom.then(() => {
       modal.classList.add('hidden');
       renderTransacciones();
@@ -1925,6 +1992,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
   }
   await initAjustes();
+  await cargarEstado();
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
