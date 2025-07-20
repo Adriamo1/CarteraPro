@@ -1791,6 +1791,9 @@ async function importarJSON(file) {
     if (data.deudaMovimientos && !data.movimientosDeuda) {
       data.movimientosDeuda = data.deudaMovimientos;
     }
+    if (data.prestamos && !data.deudas) {
+      data.deudas = data.prestamos;
+    }
     if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
         !data.settings || !Array.isArray(data.deudas) ||
         !Array.isArray(data.movimientosDeuda)) {
@@ -2452,6 +2455,7 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     const data = Object.fromEntries(fd.entries());
     data.deudaId = Number(data.deudaId);
     data.importe = parseFloat(data.importe);
+    if (!data.fecha || isNaN(new Date(data.fecha).getTime())) { alert('Fecha inválida'); return; }
     if (isNaN(data.importe) || data.importe <= 0) { alert('Importe inválido'); return; }
     const id = form.dataset.id;
     if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
