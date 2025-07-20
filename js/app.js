@@ -1126,11 +1126,10 @@ async function renderDeudas() {
   const movs = await db.movimientosDeuda.toArray();
   let totalSaldo = 0, totalIntereses = 0;
   const filas = await Promise.all(deudas.map(async d => {
-    const pagos = movs.filter(m => m.deudaId === d.id && m.tipoMovimiento === 'Pago capital')
-      .reduce((s, m) => s + (+m.importe || 0), 0);
+    const saldo = await calcularSaldoPendiente(d);
+    const pagos = (+d.capitalInicial || 0) - saldo;
     const intereses = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión'))
       .reduce((s,m)=>s+(+m.importe||0),0);
-    const saldo = (+d.capitalInicial || 0) - pagos;
     totalSaldo += saldo;
     totalIntereses += intereses;
     const vencida = d.fechaVencimiento && new Date(d.fechaVencimiento) < new Date() && saldo > 0;
@@ -1153,12 +1152,14 @@ async function renderDeudas() {
       <h2>Deudas</h2>
       <div class="mini-explica">Saldo pendiente total: ${formatCurrency(totalSaldo)} | Intereses pagados: ${formatCurrency(totalIntereses)}</div>
       <button id="add-deuda" class="btn">Añadir deuda</button>
+      <button id="sim-amort" class="btn">Simular amortización</button>
       <table class="tabla responsive-table"><thead><tr><th>Tipo</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
       <div id="detalle-deuda"></div>
     </div>`;
   app.innerHTML = html;
 
   document.getElementById('add-deuda').onclick = () => mostrarModalDeuda();
+  document.getElementById('sim-amort').onclick = () => mostrarModalSimularAmortizacion();
   document.querySelectorAll('.edit-deuda').forEach(b => b.onclick = async () => {
     const d = await db.deudas.get(Number(b.dataset.id));
     if (d) mostrarModalDeuda(d);
@@ -2421,8 +2422,78 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
   };
 }
 
+function crearModalSimularAmortizacion() {
+  if (document.getElementById('sim-amort-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'sim-amort-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Simular amortización</h3>
+      <form id="form-sim-amort">
+        <input type="number" step="any" name="capital" placeholder="Capital" required />
+        <input type="number" step="any" name="tin" placeholder="TIN %" required />
+        <input type="number" step="any" name="plazo" placeholder="Plazo (años)" required />
+        <select name="frecuencia">
+          <option value="12">Mensual</option>
+          <option value="4">Trimestral</option>
+          <option value="1">Anual</option>
+        </select>
+        <button class="btn">Calcular</button>
+        <button type="button" class="btn" id="cancel-sim-amort">Cerrar</button>
+      </form>
+      <div id="sim-amort-res" class="mini-explica"></div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalSimularAmortizacion(prefill) {
+  crearModalSimularAmortizacion();
+  const modal = document.getElementById('sim-amort-modal');
+  const form = document.getElementById('form-sim-amort');
+  const res = document.getElementById('sim-amort-res');
+  form.reset();
+  if (prefill) {
+    form.capital.value = prefill.capital || '';
+    form.tin.value = prefill.tin || '';
+    form.plazo.value = prefill.plazo || '';
+    form.frecuencia.value = prefill.frecuencia || '12';
+  }
+  modal.classList.remove('hidden');
+  modal.querySelector('#cancel-sim-amort').onclick = () => {
+    modal.classList.add('hidden');
+    res.textContent = '';
+  };
+  form.onsubmit = e => {
+    e.preventDefault();
+    const capital = parseFloat(form.capital.value);
+    const tin = parseFloat(form.tin.value) / 100;
+    const plazo = parseFloat(form.plazo.value);
+    const freq = parseInt(form.frecuencia.value);
+    const n = plazo * freq;
+    const i = tin / freq;
+    const cuota = capital * i / (1 - Math.pow(1 + i, -n));
+    const totalPagado = cuota * n;
+    const totalInteres = totalPagado - capital;
+    const interes1 = capital * i;
+    const capital1 = cuota - interes1;
+    res.innerHTML =
+      `Cuota: ${formatCurrency(cuota)} · Interés total: ${formatCurrency(totalInteres)}<br>Primer pago → Interés: ${formatCurrency(interes1)}, Capital: ${formatCurrency(capital1)}`;
+  };
+}
+
 function diffMeses(a, b) {
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+}
+
+async function calcularSaldoPendiente(id) {
+  const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
+  if (!deuda) return 0;
+  const movs = await db.movimientosDeuda.where('deudaId').equals(deuda.id).toArray();
+  const pagos = movs
+    .filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
+    .reduce((s, m) => s + (+m.importe || 0), 0);
+  return (+deuda.capitalInicial || 0) - pagos;
 }
 
 async function calcularAmortizacionDeuda(id) {
@@ -2457,9 +2528,7 @@ async function mostrarDetalleDeuda(id) {
   const cont = document.getElementById('detalle-deuda');
   const deuda = await db.deudas.get(id);
   const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
-  const pagCap = movs.filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
-    .reduce((s,m)=>s+(+m.importe||0),0);
-  const saldo = (+deuda.capitalInicial || 0) - pagCap;
+  const saldo = await calcularSaldoPendiente(deuda);
   let resumen = `<p><strong>${deuda.descripcion}</strong> (${deuda.tipo || ''})<br>
     Entidad: ${deuda.entidad || ''} · Capital inicial: ${formatCurrency(deuda.capitalInicial)} · Saldo pendiente: ${formatCurrency(saldo)} · Interés: ${(deuda.tipoInteres || deuda.tin || 0)}% · Vencimiento: ${deuda.fechaVencimiento || ''}</p>`;
   if (deuda.tipo === 'Hipoteca' && deuda.inmuebleAsociado) {
@@ -2483,9 +2552,14 @@ async function mostrarDetalleDeuda(id) {
     mostrarDetalleDeuda(id);
     renderDeudas();
   };
-  document.getElementById('sim-cuota').onclick = async () => {
-    const info = await calcularAmortizacionDeuda(id);
-    if (info) alert(`Cuota: ${formatCurrency(info.cuota)}\nInterés: ${formatCurrency(info.interes)}\nCapital: ${formatCurrency(info.capital)}\nRestan ${info.mesesRestantes} cuotas`);
+  document.getElementById('sim-cuota').onclick = () => {
+    const plazoMeses = deuda.fechaInicio && deuda.fechaVencimiento ? diffMeses(new Date(deuda.fechaInicio), new Date(deuda.fechaVencimiento)) : 12;
+    mostrarModalSimularAmortizacion({
+      capital: saldo,
+      tin: deuda.tipoInteres || deuda.tin || 0,
+      plazo: (plazoMeses / 12),
+      frecuencia: 12
+    });
   };
   cont.querySelectorAll('.edit-dmov').forEach(b => b.onclick = async () => {
     const mv = await db.movimientosDeuda.get(Number(b.dataset.id));
