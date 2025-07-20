@@ -456,9 +456,23 @@ function renderTransacciones() {
       <p class="mini-explica">Aquí puedes registrar compras y ventas de tus activos. Total registradas: ${total}.</p>
       <button class="btn" id="add-trans">Añadir transacción</button>
       <button class="btn" id="exportar-trans">Exportar Transacciones (CSV)</button>
-      <ul>
-        ${trans.map(t => `<li>${t.fecha} - ${t.tipo} ${t.cantidad} de ${mapa[t.activoId] || "?"} a ${t.precio}€</li>`).join("")}
-      </ul>
+      <table class="responsive-table"><thead><tr>
+          <th>Fecha</th><th>Activo</th><th>Tipo</th><th>Cant.</th><th>Precio</th><th>Comisión</th><th></th>
+      </tr></thead><tbody>
+        ${trans.map(t => `
+          <tr data-id="${t.id}">
+            <td data-label="Fecha">${t.fecha}</td>
+            <td data-label="Activo">${mapa[t.activoId] || '?'}</td>
+            <td data-label="Tipo">${t.tipo}</td>
+            <td data-label="Cant.">${t.cantidad}</td>
+            <td data-label="Precio">${t.precio}</td>
+            <td data-label="Comisión">${t.comision || 0}</td>
+            <td>
+              <button class="btn btn-small edit-trans" data-id="${t.id}">✏</button>
+              <button class="btn btn-small del-trans" data-id="${t.id}">🗑</button>
+            </td>
+          </tr>`).join('')}
+      </tbody></table>
     </div>`;
 
     document.getElementById("exportar-trans").onclick = async () => {
@@ -469,6 +483,25 @@ function renderTransacciones() {
     document.getElementById('add-trans').onclick = () => {
       mostrarModalTransaccion(activos);
     };
+
+    document.querySelectorAll('.edit-trans').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const t = await db.transacciones.get(id);
+        if (t) mostrarModalTransaccion(activos, t);
+      };
+    });
+
+    document.querySelectorAll('.del-trans').forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.id);
+        const row = btn.closest('tr');
+        mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
+          await db.transacciones.delete(id);
+          row.remove();
+        });
+      };
+    });
   });
 }
 
@@ -1248,7 +1281,7 @@ function crearModalTransaccion() {
   document.body.appendChild(div);
 }
 
-async function mostrarModalTransaccion(activos) {
+async function mostrarModalTransaccion(activos, trans) {
   crearModalTransaccion();
   const modal = document.getElementById('transaction-modal');
   const lista = document.getElementById('sel-activo');
@@ -1257,6 +1290,20 @@ async function mostrarModalTransaccion(activos) {
   const dl = document.getElementById('lista-brokers');
   dl.innerHTML = brokers.map(b => `<option value="${b}">`).join('');
   modal.classList.remove('hidden');
+
+  const form = document.getElementById('form-transaccion');
+  form.dataset.id = trans ? trans.id : '';
+  modal.querySelector('h3').textContent = trans ? 'Editar transacción' : 'Nueva transacción';
+
+  if (trans) {
+    form.activoId.value = trans.activoId;
+    form.tipo.value = trans.tipo;
+    form.fecha.value = trans.fecha;
+    form.cantidad.value = trans.cantidad;
+    document.getElementById('inp-precio').value = trans.precio;
+    document.getElementById('inp-comision').value = trans.comision || 0;
+    document.getElementById('inp-broker').value = trans.broker || '';
+  }
 
   const precioEl = document.getElementById('inp-precio');
   const cantEl = modal.querySelector('[name="cantidad"]');
@@ -1309,7 +1356,9 @@ async function mostrarModalTransaccion(activos) {
     data.cantidad = parseFloat(data.cantidad);
     data.precio = parseFloat(data.precio);
     data.comision = parseFloat(data.comision) || 0;
-    db.transacciones.add(data).then(() => {
+    const id = form.dataset.id;
+    const prom = id ? db.transacciones.update(Number(id), data) : db.transacciones.add(data);
+    prom.then(() => {
       modal.classList.add('hidden');
       renderTransacciones();
     });
