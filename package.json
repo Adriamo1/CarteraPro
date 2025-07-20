@@ -1,0 +1,10 @@
+{
+  "name": "carterapro",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "devDependencies": {
+    "rollup": "^4.0.0"
+  }
+}
