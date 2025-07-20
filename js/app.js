@@ -140,7 +140,9 @@ async function borrarEntidad(nombre, id) {
 db.on('changes', changes => {
   if (!appState) return;
   for (const ch of changes) {
-    const name = ch.table;
+    let name = ch.table;
+    if (name === 'deudaMovimientos') name = 'movimientosDeuda';
+    if (name === 'prestamos') name = 'deudas';
     if (!appState[name]) continue;
     if (ch.type === 1 || ch.type === 'create') {
       appState[name].push({ ...(ch.obj || {}), id: ch.key });
@@ -1782,12 +1784,21 @@ async function importarJSON(file) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
-    if (!data.assets || !data.transactions || !data.settings) {
+    if (!data || typeof data !== 'object') {
+      alert('Archivo inválido');
+      return false;
+    }
+    if (data.deudaMovimientos && !data.movimientosDeuda) {
+      data.movimientosDeuda = data.deudaMovimientos;
+    }
+    if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
+        !data.settings || !Array.isArray(data.deudas) ||
+        !Array.isArray(data.movimientosDeuda)) {
       alert('Archivo incompleto');
       return false;
     }
     for (const name of STORE_NAMES) {
-      if (data[name]) {
+      if (Array.isArray(data[name])) {
         await db[name].clear();
         if (data[name].length) await db[name].bulkAdd(data[name]);
       }
