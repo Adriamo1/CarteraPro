@@ -168,6 +168,7 @@ function getTipoCambio() {
   return parseFloat(getUserSetting("tipo_cambio") || 1);
 }
 
+
 const vistas = {
   "#inicio": renderResumen,
   "#dashboard": renderDashboard,
@@ -1101,6 +1102,7 @@ async function renderInfo() {
   }
 }
 
+
 // --------- Gráficos Dashboard ---------
 async function calcularPnLPorActivo() {
   const [activos, trans] = await Promise.all([
@@ -1251,6 +1253,7 @@ async function renderGraficosDashboard() {
   const ctxB = document.getElementById('grafico-broker').getContext('2d');
   new Chart(ctxB, {type:'bar', data:{labels:broker.labels, datasets:[{data:broker.data, backgroundColor:'#70c1b3'}]}, options:{responsive:true, plugins:{legend:{display:false}}, indexAxis:'y'}});
 }
+
 // Exportar CSV
 function exportarCSV(array, filename) {
   if (!array.length) return alert("No hay datos.");
@@ -1935,3 +1938,5 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   checkForUpdates();
 });
+
+

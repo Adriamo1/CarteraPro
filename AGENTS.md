@@ -14,6 +14,12 @@ npm install
 npm run build
 ```
 
+If Rollup isn't available, you can bundle offline with:
+
+```bash
+node build.js
+```
+
 ## Testing
 Use the built‑in python web server to test the site:
 ```bash
