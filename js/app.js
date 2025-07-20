@@ -248,6 +248,60 @@ async function totalSavebackPendiente() {
     .reduce((s, m) => s + (+m.importe || 0), 0);
 }
 
+// Impacto total de divisa según tipo de cambio de compra vs actual
+async function calcularEfectoDivisa() {
+  const [activos, trans] = await Promise.all([
+    db.activos.toArray(),
+    db.transacciones.toArray()
+  ]);
+  let impacto = 0;
+  for (const a of activos) {
+    if (a.moneda && a.moneda !== 'EUR') {
+      const compras = trans.filter(t => t.activoId === a.id && (t.tipo || '').toLowerCase() === 'compra');
+      const cambioCompra = compras.length ? compras.reduce((s,t)=>s+(+t.cambio||1),0)/compras.length : 1;
+      const cambioActual = a.cambioActual ? +a.cambioActual : await obtenerTipoCambio(a.moneda);
+      const val = +a.valorActual || 0;
+      impacto += val * (cambioActual - cambioCompra);
+    }
+  }
+  return impacto;
+}
+
+// Suma de dividendos cobrados según tabla de ingresos
+async function totalDividendos() {
+  const ingresos = await db.ingresos.toArray();
+  return ingresos
+    .filter(i => {
+      const t = (i.tipo || '').toLowerCase();
+      return t === 'dividendo' || t === 'ingreso';
+    })
+    .reduce((s,i)=>s+(+i.importe||0),0);
+}
+
+// Agrupa activos por broker contando número y valor
+async function resumenPorBroker() {
+  const activos = await db.activos.toArray();
+  const map = {};
+  activos.forEach(a => {
+    const b = a.broker || 'Otro';
+    if (!map[b]) map[b] = { count:0, valor:0 };
+    map[b].count += 1;
+    map[b].valor += (+a.valorActual || 0);
+  });
+  return map;
+}
+
+// Activo con mayor valor actual
+async function activoMayorValor() {
+  const activos = await db.activos.toArray();
+  let max = null;
+  for (const a of activos) {
+    const v = +a.valorActual || 0;
+    if (!max || v > max.valor) max = { nombre:a.nombre, ticker:a.ticker, valor:v };
+  }
+  return max;
+}
+
 function navegar() {
   const hash = location.hash || "#dashboard";
   const render = vistas[hash];
@@ -277,8 +331,15 @@ async function renderDashboard() {
   const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
   const interesMes = await calcularInteresMes();
   const savePend = await totalSavebackPendiente();
+  const efectoDivisa = await calcularEfectoDivisa();
+  const dividendos = await totalDividendos();
+  const brokerRes = await resumenPorBroker();
+  const mayor = await activoMayorValor();
   const porTipoHtml = Object.entries(valorPorTipo)
     .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
+  const brokerHtml = Object.entries(brokerRes)
+    .map(([b,d]) => `<div>${b}: ${d.count} / ${formatCurrency(d.valor)}</div>`)
+    .join('');
   app.innerHTML = `
     <h2>Panel de control</h2>
     <div class="kpi-grid">
@@ -326,12 +387,44 @@ async function renderDashboard() {
           ${porTipoHtml}
         </div>
       </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🌍💱</div>
+        <div>
+          <div>Efecto divisa</div>
+          <div class="kpi-value ${efectoDivisa>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(Math.abs(efectoDivisa))} ${efectoDivisa>=0?'⬆️':'⬇️'}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🧾💰</div>
+        <div>
+          <div>Dividendos cobrados</div>
+          <div class="kpi-value">${formatCurrency(dividendos)}</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🏦📊</div>
+        <div>
+          <div>Distribución por broker</div>
+          ${brokerHtml}
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🚀📈</div>
+        <div>
+          <div>Valoración actual más alta</div>
+          <div>${mayor ? mayor.nombre + ' (' + mayor.ticker + ')' : '-'}</div>
+          <div class="kpi-value">${mayor ? formatCurrency(mayor.valor) : '-'}</div>
+        </div>
+      </div>
     </div>
     <div class="card"><h3>P&L por activo</h3><canvas id="grafico-pnl" height="160"></canvas></div>
     <div class="card"><h3>Saveback y TIN</h3><canvas id="grafico-saveback" height="160"></canvas></div>
     <div class="card"><h3>Asignación actual vs objetivo</h3><canvas id="grafico-asignacion" height="160"></canvas></div>
     <div class="card"><h3>Distribución por divisa</h3><canvas id="grafico-divisa" height="160"></canvas></div>
     <div class="card"><h3>Distribución por sector</h3><canvas id="grafico-sector" height="160"></canvas></div>
+    <div class="card"><h3>Distribución por tipo de activo</h3><canvas id="grafico-tipo" height="160"></canvas></div>
+    <div class="card"><h3>Evolución de la cartera</h3><canvas id="grafico-evolucion" height="160"></canvas></div>
+    <div class="card"><h3>Distribución por broker</h3><canvas id="grafico-broker" height="160"></canvas></div>
     `;
 
   renderGraficosDashboard();
@@ -976,6 +1069,26 @@ async function datosAsignacion() {
   return { labels, actual, objetivo };
 }
 
+async function datosEvolucionCartera() {
+  const trans = await db.transacciones.toArray();
+  if (!trans.length) return { labels: [], data: [] };
+  trans.sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  const pos = {}, price = {};
+  const labels = [], data = [];
+  for (const t of trans) {
+    const id = t.activoId;
+    if (!pos[id]) pos[id] = 0;
+    const qty = +t.cantidad || 0;
+    if ((t.tipo||'').toLowerCase()==='compra') pos[id]+=qty;
+    if ((t.tipo||'').toLowerCase()==='venta') pos[id]-=qty;
+    if (+t.precio) price[id] = +t.precio;
+    const total = Object.keys(pos).reduce((s,k)=>s+pos[k]*(price[k]||0),0);
+    labels.push(t.fecha.slice(0,10));
+    data.push(total);
+  }
+  return { labels, data };
+}
+
 async function renderGraficosDashboard() {
   const pnl = await calcularPnLPorActivo();
   const ctxPnl = document.getElementById('grafico-pnl').getContext('2d');
@@ -1017,6 +1130,18 @@ async function renderGraficosDashboard() {
   const sector = await distribucionPorCampo('sector');
   const ctxSec = document.getElementById('grafico-sector').getContext('2d');
   new Chart(ctxSec, {type:'doughnut', data:{labels:sector.labels, datasets:[{data:sector.data}]}, options:{responsive:true}});
+
+  const tipo = await distribucionPorCampo('tipo');
+  const ctxTipo = document.getElementById('grafico-tipo').getContext('2d');
+  new Chart(ctxTipo, {type:'doughnut', data:{labels:tipo.labels, datasets:[{data:tipo.data}]}, options:{responsive:true}});
+
+  const evo = await datosEvolucionCartera();
+  const ctxE = document.getElementById('grafico-evolucion').getContext('2d');
+  new Chart(ctxE, {type:'line', data:{labels:evo.labels, datasets:[{label:'Valor total',data:evo.data,borderColor:'#3498db',tension:0.2}]}, options:{responsive:true}});
+
+  const broker = await distribucionPorCampo('broker');
+  const ctxB = document.getElementById('grafico-broker').getContext('2d');
+  new Chart(ctxB, {type:'bar', data:{labels:broker.labels, datasets:[{data:broker.data, backgroundColor:'#70c1b3'}]}, options:{responsive:true, plugins:{legend:{display:false}}, indexAxis:'y'}});
 }
 // Exportar CSV
 function exportarCSV(array, filename) {
