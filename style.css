@@ -364,3 +364,14 @@ footer {
   width: 90%;
   max-width: 400px;
 }
+
+/* ----- Filtros ----- */
+.filtros-table {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  margin: var(--gap-sm) 0;
+}
+.filtros-table input[type="search"] {
+  flex: 1 1 160px;
+}

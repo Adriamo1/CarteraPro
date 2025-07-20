@@ -450,20 +450,21 @@ async function renderActivos() {
       </form>`;
 
   if (modo === 'resumen') {
-      html += `<table class="tabla-activos responsive-table"><thead><tr><th>Nombre</th><th>Ticker</th><th>Tipo</th><th>Moneda</th><th></th></tr></thead><tbody>`+
-        activos.map(a => `
-          <tr data-id="${a.id}">
-            <td>${a.nombre}</td>
-            <td>${a.ticker}</td>
-            <td>${a.tipo}</td>
-            <td>${a.moneda}</td>
-            <td>
-              <button class="btn btn-small edit-act" data-id="${a.id}">✏</button>
-              <button class="btn btn-small del-act" data-id="${a.id}">🗑</button>
-            </td>
-          </tr>
-        `).join('')+
-      `</tbody></table>`;
+      const tipos = [...new Set(activos.map(a => a.tipo))];
+      const monedas = [...new Set(activos.map(a => a.moneda))];
+      html += `
+      <div class="filtros-table">
+        <input type="search" id="buscar-activos" placeholder="Buscar..." />
+        <select id="filtro-tipo-activo">
+          <option value="">Todos los tipos</option>
+          ${tipos.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <select id="filtro-moneda-activo">
+          <option value="">Todas las monedas</option>
+          ${monedas.map(m => `<option value="${m}">${m}</option>`).join('')}
+        </select>
+      </div>
+      <table class="tabla-activos responsive-table"><thead><tr><th>Nombre</th><th>Ticker</th><th>Tipo</th><th>Moneda</th><th></th></tr></thead><tbody></tbody></table>`;
   } else {
       for (const a of activos) {
         const trans = await db.transacciones.where('activoId').equals(a.id).toArray();
@@ -508,25 +509,67 @@ async function renderActivos() {
     mostrarModalAnalisis();
   };
 
-  document.querySelectorAll('.edit-act').forEach(btn => {
-    btn.onclick = async () => {
-      const id = Number(btn.dataset.id);
-      const act = await db.activos.get(id);
-      if (act) mostrarModalEditarActivo(act);
-    };
-  });
+  function attachRowHandlers() {
+    document.querySelectorAll('.edit-act').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const act = await db.activos.get(id);
+        if (act) mostrarModalEditarActivo(act);
+      };
+    });
 
-  document.querySelectorAll('.del-act').forEach(btn => {
-    btn.onclick = () => {
-      const id = Number(btn.dataset.id);
-      const row = btn.closest('tr');
-      mostrarConfirmacion('¿Eliminar este activo?', async () => {
-        await db.transacciones.where('activoId').equals(id).delete();
-        await db.activos.delete(id);
-        row.remove();
-      });
+    document.querySelectorAll('.del-act').forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.dataset.id);
+        const row = btn.closest('tr');
+        mostrarConfirmacion('¿Eliminar este activo?', async () => {
+          await db.transacciones.where('activoId').equals(id).delete();
+          await db.activos.delete(id);
+          row.remove();
+        });
+      };
+    });
+  }
+
+  if (modo === 'resumen') {
+    const tbody = document.querySelector('.tabla-activos tbody');
+    const buscar = document.getElementById('buscar-activos');
+    const selTipo = document.getElementById('filtro-tipo-activo');
+    const selMoneda = document.getElementById('filtro-moneda-activo');
+
+    const filtrar = () => {
+      const texto = buscar.value.toLowerCase();
+      const tipo = selTipo.value;
+      const moneda = selMoneda.value;
+      const filas = activos.filter(a => {
+        const txt = `${a.nombre} ${a.ticker} ${a.broker||''} ${a.tipo}`.toLowerCase();
+        const okTexto = !texto || txt.includes(texto);
+        const okTipo = !tipo || a.tipo === tipo;
+        const okMon = !moneda || a.moneda === moneda;
+        return okTexto && okTipo && okMon;
+      }).map(a => `
+        <tr data-id="${a.id}">
+          <td>${a.nombre}</td>
+          <td>${a.ticker}</td>
+          <td>${a.tipo}</td>
+          <td>${a.moneda}</td>
+          <td>
+            <button class="btn btn-small edit-act" data-id="${a.id}">✏</button>
+            <button class="btn btn-small del-act" data-id="${a.id}">🗑</button>
+          </td>
+        </tr>
+      `).join('');
+      tbody.innerHTML = filas;
+      attachRowHandlers();
     };
-  });
+
+    buscar.addEventListener('input', filtrar);
+    selTipo.addEventListener('change', filtrar);
+    selMoneda.addEventListener('change', filtrar);
+    filtrar();
+  } else {
+    attachRowHandlers();
+  }
 
   if (modo === 'detalle') {
     for (const a of activos) {
@@ -541,31 +584,30 @@ async function renderActivos() {
 
 function renderTransacciones() {
   Promise.all([db.transacciones.toArray(), db.activos.toArray()]).then(([trans, activos]) => {
-    const mapa = Object.fromEntries(activos.map(a => [a.id, a.nombre]));
+    const mapa = Object.fromEntries(activos.map(a => [a.id, a]));
     const total = trans.length;
+    const tipos = [...new Set(activos.map(a => a.tipo))];
+    const monedas = [...new Set(activos.map(a => a.moneda))];
     app.innerHTML = `
     <div class="card">
       <h2>Transacciones</h2>
       <p class="mini-explica">Aquí puedes registrar compras y ventas de tus activos. Total registradas: ${total}.</p>
       <button class="btn" id="add-trans">Añadir transacción</button>
       <button class="btn" id="exportar-trans">Exportar Transacciones (CSV)</button>
+      <div class="filtros-table">
+        <input type="search" id="buscar-trans" placeholder="Buscar..." />
+        <select id="filtro-tipo-trans">
+          <option value="">Todos los tipos</option>
+          ${tipos.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <select id="filtro-moneda-trans">
+          <option value="">Todas las monedas</option>
+          ${monedas.map(m => `<option value="${m}">${m}</option>`).join('')}
+        </select>
+      </div>
       <table class="responsive-table"><thead><tr>
           <th>Fecha</th><th>Activo</th><th>Tipo</th><th>Cant.</th><th>Precio</th><th>Comisión</th><th></th>
-      </tr></thead><tbody>
-        ${trans.map(t => `
-          <tr data-id="${t.id}">
-            <td data-label="Fecha">${t.fecha}</td>
-            <td data-label="Activo">${mapa[t.activoId] || '?'}</td>
-            <td data-label="Tipo">${t.tipo}</td>
-            <td data-label="Cant.">${t.cantidad}</td>
-            <td data-label="Precio">${t.precio}</td>
-            <td data-label="Comisión">${t.comision || 0}</td>
-            <td>
-              <button class="btn btn-small edit-trans" data-id="${t.id}">✏</button>
-              <button class="btn btn-small del-trans" data-id="${t.id}">🗑</button>
-            </td>
-          </tr>`).join('')}
-      </tbody></table>
+      </tr></thead><tbody></tbody></table>
     </div>`;
 
     document.getElementById("exportar-trans").onclick = async () => {
@@ -577,24 +619,67 @@ function renderTransacciones() {
       mostrarModalTransaccion(activos);
     };
 
-    document.querySelectorAll('.edit-trans').forEach(btn => {
-      btn.onclick = async () => {
-        const id = Number(btn.dataset.id);
-        const t = await db.transacciones.get(id);
-        if (t) mostrarModalTransaccion(activos, t);
-      };
-    });
+    function attachHandlers() {
+      document.querySelectorAll('.edit-trans').forEach(btn => {
+        btn.onclick = async () => {
+          const id = Number(btn.dataset.id);
+          const t = await db.transacciones.get(id);
+          if (t) mostrarModalTransaccion(activos, t);
+        };
+      });
 
-    document.querySelectorAll('.del-trans').forEach(btn => {
-      btn.onclick = () => {
-        const id = Number(btn.dataset.id);
-        const row = btn.closest('tr');
-        mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
-          await db.transacciones.delete(id);
-          row.remove();
-        });
-      };
-    });
+      document.querySelectorAll('.del-trans').forEach(btn => {
+        btn.onclick = () => {
+          const id = Number(btn.dataset.id);
+          const row = btn.closest('tr');
+          mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
+            await db.transacciones.delete(id);
+            row.remove();
+          });
+        };
+      });
+    }
+
+    const tbody = document.querySelector('.responsive-table tbody');
+    const buscar = document.getElementById('buscar-trans');
+    const selTipo = document.getElementById('filtro-tipo-trans');
+    const selMoneda = document.getElementById('filtro-moneda-trans');
+
+    const filtrar = () => {
+      const texto = buscar.value.toLowerCase();
+      const tipo = selTipo.value;
+      const moneda = selMoneda.value;
+      const filas = trans.filter(t => {
+        const a = mapa[t.activoId] || {};
+        const txt = `${a.nombre||''} ${a.ticker||''} ${a.broker||''} ${t.tipo}`.toLowerCase();
+        const okTexto = !texto || txt.includes(texto);
+        const okTipo = !tipo || a.tipo === tipo;
+        const okMon = !moneda || a.moneda === moneda;
+        return okTexto && okTipo && okMon;
+      }).map(t => {
+        const a = mapa[t.activoId] || {};
+        return `
+          <tr data-id="${t.id}">
+            <td data-label="Fecha">${t.fecha}</td>
+            <td data-label="Activo">${a.nombre || '?'}</td>
+            <td data-label="Tipo">${t.tipo}</td>
+            <td data-label="Cant.">${t.cantidad}</td>
+            <td data-label="Precio">${t.precio}</td>
+            <td data-label="Comisión">${t.comision || 0}</td>
+            <td>
+              <button class="btn btn-small edit-trans" data-id="${t.id}">✏</button>
+              <button class="btn btn-small del-trans" data-id="${t.id}">🗑</button>
+            </td>
+          </tr>`;
+      }).join('');
+      tbody.innerHTML = filas;
+      attachHandlers();
+    };
+
+    buscar.addEventListener('input', filtrar);
+    selTipo.addEventListener('change', filtrar);
+    selMoneda.addEventListener('change', filtrar);
+    filtrar();
   });
 }
 
