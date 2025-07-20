@@ -74,6 +74,9 @@ db.version(5).stores({
 db.version(6).stores({
   deudas: "++id, tipo, descripcion, entidad, fechaInicio, fechaVencimiento, capitalInicial, tipoInteres, interesFijo, inmuebleAsociado, notas, pagoAutomatico"
 });
+db.version(7).stores({
+  historialPatrimonio: "++id, fecha"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -89,7 +92,8 @@ const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
   'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'movimientosDeuda', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings', 'backups', 'portfolioHistory', 'deudaHistory'
+  'interestRates', 'settings', 'backups', 'portfolioHistory', 'deudaHistory',
+  'historialPatrimonio'
 ];
 
 const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
@@ -161,6 +165,7 @@ db.on('changes', changes => {
   }
   if (changes.some(c => ['assets','transactions','movimientos','cuentas','deudas','deudaMovimientos'].includes(c.table))) {
     registrarHistoricoCartera();
+    registrarHistorialPatrimonio();
   }
 });
 
@@ -171,6 +176,7 @@ const state = {
   interestRates: [],
   portfolioHistory: [],
   deudaHistory: [],
+  historialPatrimonio: [],
   deudas: [],
   movimientosDeuda: [],
   settings: { lastExchangeUpdate: null }
@@ -636,6 +642,26 @@ async function registrarHistoricoCartera() {
   }
 }
 
+async function registrarHistorialPatrimonio() {
+  const { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente } = await calcularPatrimonioNeto();
+  const fecha = new Date().toISOString().slice(0,10);
+  const existente = await db.historialPatrimonio.where('fecha').equals(fecha).first();
+  if (existente) {
+    await db.historialPatrimonio.update(existente.id, {
+      patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente
+    });
+    if (appState && appState.historialPatrimonio) {
+      const idx = appState.historialPatrimonio.findIndex(h=>h.id===existente.id);
+      if (idx>=0) Object.assign(appState.historialPatrimonio[idx], { patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
+    }
+  } else {
+    const id = await db.historialPatrimonio.add({ fecha, patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
+    if (appState && appState.historialPatrimonio) {
+      appState.historialPatrimonio.push({ id, fecha, patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
+    }
+  }
+}
+
 async function registrarHistoricoDeuda(deudaId, fecha) {
   const saldo = await calcularSaldoPendiente(deudaId);
   const f = fecha || new Date().toISOString().slice(0,10);
@@ -1033,17 +1059,21 @@ async function renderDashboard() {
     <div class="card"><h3>Distribución por sector</h3><canvas id="grafico-sector" height="160"></canvas></div>
     <div class="card"><h3>Distribución por tipo de activo</h3><canvas id="grafico-tipo" height="160"></canvas></div>
     <div class="card"><h3>Evolución de la cartera</h3><canvas id="grafico-evolucion" height="160"></canvas></div>
+    <div class="card"><h3>Evolución patrimonio neto <select id="filtro-hpat"><option value="">Todo</option><option value="30">30 días</option><option value="180">6 meses</option></select></h3><canvas id="grafico-hist-patrimonio" height="160"></canvas></div>
     <div class="card"><h3>Distribución por broker</h3><canvas id="grafico-broker" height="160"></canvas></div>
     <button class="btn" id="btn-plan-pagos">Planificador mensual de deudas</button>
     `;
 
   renderGraficosDashboard();
+  renderGraficoHistorialPatrimonio();
   const btnReset = document.getElementById('reset-obj');
   if (btnReset) btnReset.onclick = () => {
     setObjetivoRentabilidad(0).then(renderDashboard);
   };
   const planBtn = document.getElementById('btn-plan-pagos');
   if (planBtn) planBtn.onclick = () => { location.hash = '#planpagos'; };
+  const selH = document.getElementById('filtro-hpat');
+  if (selH) selH.onchange = renderGraficoHistorialPatrimonio;
 }
 
 async function renderActivos() {
@@ -2012,6 +2042,50 @@ async function datosEvolucionCartera() {
   return { labels, data };
 }
 
+async function datosHistorialPatrimonio(rangoDias) {
+  if (!state.historialPatrimonio.length) {
+    state.historialPatrimonio = await db.historialPatrimonio.orderBy('fecha').toArray();
+  }
+  let hist = [...state.historialPatrimonio];
+  hist.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
+  if (rangoDias) {
+    const limite = new Date();
+    limite.setDate(limite.getDate() - rangoDias);
+    const f = limite.toISOString().slice(0,10);
+    hist = hist.filter(h=>h.fecha >= f);
+  }
+  return {
+    labels: hist.map(h=>h.fecha),
+    neto: hist.map(h=>h.patrimonioNeto),
+    activos: hist.map(h=>h.activos),
+    cuentas: hist.map(h=>h.cuentas),
+    deudas: hist.map(h=>h.deudas)
+  };
+}
+
+async function renderGraficoHistorialPatrimonio() {
+  if (!hasChart) return;
+  const sel = document.getElementById('filtro-hpat');
+  const rango = sel && sel.value ? parseInt(sel.value) : null;
+  const datos = await datosHistorialPatrimonio(rango);
+  const ctxEl = document.getElementById('grafico-hist-patrimonio');
+  if (!ctxEl) return;
+  if (ctxEl.chart) ctxEl.chart.destroy();
+  ctxEl.chart = new Chart(ctxEl.getContext('2d'), {
+    type:'line',
+    data:{
+      labels:datos.labels,
+      datasets:[
+        {label:'Patrimonio neto', data:datos.neto, borderColor:'#2e7d32', tension:0.2},
+        {label:'Activos', data:datos.activos, borderColor:'#3498db', tension:0.2},
+        {label:'Cuentas', data:datos.cuentas, borderColor:'#3f8edc', tension:0.2},
+        {label:'Deudas', data:datos.deudas.map(d=>-d), borderColor:'#e57373', tension:0.2}
+      ]
+    },
+    options:{responsive:true}
+  });
+}
+
 async function renderGraficosDashboard() {
   if (!hasChart) return;
   const pnl = await calcularPnLPorActivo();
@@ -2125,7 +2199,8 @@ async function importarJSON(file) {
     if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
         !data.settings || !Array.isArray(data.deudas) ||
         !Array.isArray(data.movimientosDeuda) ||
-        !Array.isArray(data.deudaHistory)) {
+        !Array.isArray(data.deudaHistory) ||
+        !Array.isArray(data.historialPatrimonio)) {
       alert('Archivo incompleto');
       return false;
     }
@@ -3300,10 +3375,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.deudas = await db.deudas.toArray();
   state.movimientosDeuda = await db.movimientosDeuda.toArray();
   state.deudaHistory = await db.deudaHistory.toArray();
+  state.historialPatrimonio = await db.historialPatrimonio.toArray();
   await procesarPagosAutomaticos();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
+  registrarHistorialPatrimonio();
   scheduleAutoBackup();
   navegar();
   window.addEventListener("hashchange", navegar);
