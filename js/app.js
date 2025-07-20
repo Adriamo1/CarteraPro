@@ -21,6 +21,27 @@ db.version(1).stores({
   interestRates: "++id, fecha, tin",
   settings: "clave, valor"
 });
+db.version(2).stores({
+  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
+  cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
+  tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
+  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
+  bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
+  prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
+  seguros: "++id, bienId, tipo, prima, inicio, vencimiento, notas",
+  historico: "fecha, valorTotal, saldoCuentas, saveback, resumenPorActivo, resumenPorBien, tiposCambio",
+  carteras: "++id, nombre, descripcion, propietario, activos",
+  documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
+  logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
+  exchangeRates: "++id, moneda, tasa, fecha",
+  interestRates: "++id, fecha, tin",
+  settings: "clave, valor",
+  backups: "++id, fecha"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -34,7 +55,7 @@ const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
   'expenses', 'income', 'suscripciones', 'bienes', 'prestamos', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings'
+  'interestRates', 'settings', 'backups'
 ];
 
 const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
@@ -1089,8 +1110,21 @@ function renderAjustes() {
         <div id="ajustes-msg" class="form-msg"></div>
       </form>
       <section>
-        <h3>Exportar datos</h3>
-        <button id="btn-exportar-datos" class="btn">Exportar Backup</button>
+        <h3>Gestión de Datos</h3>
+        <p>
+          <button id="btn-exp-json" class="btn">💾 Exportar JSON</button>
+          <input type="file" id="inp-json" accept="application/json" hidden>
+          <button id="btn-imp-json" class="btn">📤 Importar JSON</button>
+        </p>
+        <p>
+          <select id="sel-csv-kind">
+            <option value="transactions">Transacciones</option>
+            <option value="accountMovements">Cuenta remunerada</option>
+          </select>
+          <button id="btn-exp-csv" class="btn">⬇️ Exportar CSV</button>
+          <input type="file" id="inp-csv" accept=".csv" hidden>
+          <button id="btn-imp-csv" class="btn">📥 Importar CSV</button>
+        </p>
       </section>
     </div>`;
 
@@ -1133,8 +1167,25 @@ function renderAjustes() {
     }
   });
 
-  const btnExp = document.getElementById('btn-exportar-datos');
-  if (btnExp) btnExp.onclick = exportarBackup;
+  const btnExpJ = document.getElementById('btn-exp-json');
+  const btnImpJ = document.getElementById('btn-imp-json');
+  const inpJ = document.getElementById('inp-json');
+  const btnExpC = document.getElementById('btn-exp-csv');
+  const btnImpC = document.getElementById('btn-imp-csv');
+  const inpC = document.getElementById('inp-csv');
+  const selCsv = document.getElementById('sel-csv-kind');
+  if (btnExpJ) btnExpJ.onclick = exportarJSON;
+  if (btnImpJ) btnImpJ.onclick = () => inpJ.click();
+  if (inpJ) inpJ.onchange = () => {
+    if (inpJ.files[0]) importarJSON(inpJ.files[0]);
+    inpJ.value = '';
+  };
+  if (btnExpC) btnExpC.onclick = () => exportarCSVTipo(selCsv.value);
+  if (btnImpC) btnImpC.onclick = () => inpC.click();
+  if (inpC) inpC.onchange = () => {
+    if (inpC.files[0]) importarCSV(inpC.files[0], selCsv.value);
+    inpC.value = '';
+  };
 }
 
 async function renderInfo() {
@@ -1356,6 +1407,130 @@ function parseCSV(text) {
     headers.forEach((h,i)=> obj[h] = (cols[i] || '').trim());
     return obj;
   });
+}
+
+async function exportarJSON() {
+  if (!appState) await cargarEstado();
+  const filename = `cartera-pro-datos-${new Date().toISOString().slice(0,10)}.json`;
+  const blob = new Blob([JSON.stringify(appState)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+async function importarJSON(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.assets || !data.transactions || !data.settings) {
+      alert('Archivo incompleto');
+      return false;
+    }
+    for (const name of STORE_NAMES) {
+      if (data[name]) {
+        await db[name].clear();
+        if (data[name].length) await db[name].bulkAdd(data[name]);
+      }
+    }
+    appState = JSON.parse(JSON.stringify(data));
+    alert('Datos importados');
+    return true;
+  } catch (e) {
+    alert('Error al importar: ' + e.message);
+    return false;
+  }
+}
+
+async function exportarCSVTipo(tipo) {
+  const datos = [];
+  if (tipo === 'transactions') {
+    const trans = appState ? appState.transactions : await db.transactions.toArray();
+    const assets = appState ? appState.assets : await db.assets.toArray();
+    const mapa = {};
+    assets.forEach(a => mapa[a.id] = a.ticker || '');
+    trans.forEach(t => datos.push({
+      assetId: t.activoId,
+      assetTicker: mapa[t.activoId] || '',
+      date: t.fecha,
+      type: t.tipo,
+      quantity: t.cantidad,
+      pricePerUnit: t.precio,
+      commission: t.comision,
+      broker: t.broker
+    }));
+    exportarCSV(datos, 'transacciones.csv');
+  } else if (tipo === 'accountMovements') {
+    const movs = appState ? appState.movimientos : await db.movimientos.toArray();
+    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
+    const mapa = {};
+    cuentas.forEach(c => mapa[c.id] = c.banco || '');
+    movs.forEach(m => datos.push({
+      date: m.fecha,
+      type: m.tipo,
+      bank: mapa[m.cuentaId] || '',
+      amount: m.importe,
+      notes: m.descripcion || m.notas || ''
+    }));
+    exportarCSV(datos, 'movimientos.csv');
+  }
+}
+
+async function importarCSV(file, tipo) {
+  const text = await file.text();
+  const rows = parseCSV(text);
+  if (!rows.length) return;
+  if (tipo === 'transactions') {
+    const assets = appState ? appState.assets : await db.assets.toArray();
+    const mapaTicker = {};
+    assets.forEach(a => mapaTicker[(a.ticker || '').toUpperCase()] = a.id);
+    for (const r of rows) {
+      if (!r.date && !r.fecha) continue;
+      const id = parseInt(r.id || r.ID);
+      if (id && await db.transactions.get(id)) continue;
+      let actId = parseInt(r.assetId || r.activoId || 0);
+      const tkr = (r.assetTicker || r.ticker || '').toUpperCase();
+      if (!actId && tkr) actId = mapaTicker[tkr];
+      if (!actId && tkr) {
+        actId = await db.assets.add({ nombre: tkr, ticker: tkr, tipo: '', moneda: 'EUR' });
+        mapaTicker[tkr] = actId;
+      }
+      if (!actId) continue;
+      const obj = {
+        activoId: actId,
+        fecha: r.date || r.fecha,
+        tipo: r.type || r.tipo,
+        cantidad: parseFloat(r.quantity || r.cantidad || 0),
+        precio: parseFloat(r.pricePerUnit || r.precio || 0),
+        comision: parseFloat(r.commission || r.comision || 0),
+        broker: r.broker || ''
+      };
+      await db.transactions.add(obj);
+    }
+  } else if (tipo === 'accountMovements') {
+    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
+    const mapaBanco = {};
+    cuentas.forEach(c => mapaBanco[(c.banco || '').toUpperCase()] = c.id);
+    for (const r of rows) {
+      const id = parseInt(r.id || r.ID);
+      if (id && await db.movimientos.get(id)) continue;
+      let cId = mapaBanco[(r.bank || '').toUpperCase()];
+      if (!cId && r.bank) {
+        cId = await db.cuentas.add({ banco: r.bank, alias: r.bank, saldo: 0, tipo: 'corriente' });
+        mapaBanco[(r.bank || '').toUpperCase()] = cId;
+      }
+      if (!cId) continue;
+      const obj = {
+        fecha: r.date || r.fecha,
+        tipo: r.type || r.tipo,
+        cuentaId: cId,
+        importe: parseFloat(r.amount || r.importe || 0),
+        descripcion: r.notes || r.descripcion || ''
+      };
+      await db.movimientos.add(obj);
+    }
+  }
+  await cargarEstado();
 }
 
 async function exportarBackup() {
@@ -2006,6 +2181,33 @@ async function obtenerTipoCambio(moneda) {
   return getTipoCambio();
 }
 
+function scheduleAutoBackup() {
+  setInterval(async () => {
+    if (!appState) await cargarEstado();
+    const fecha = new Date().toISOString();
+    try {
+      await db.backups.add({ fecha, data: JSON.stringify(appState) });
+      const all = await db.backups.orderBy('fecha').toArray();
+      if (all.length > 5) await db.backups.delete(all[0].id);
+    } catch {}
+  }, 6 * 60 * 60 * 1000);
+}
+
+function initDragAndDrop() {
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (f.name.toLowerCase().endsWith('.json')) {
+      if (confirm('Importar datos desde JSON?')) importarJSON(f);
+    } else if (f.name.toLowerCase().endsWith('.csv')) {
+      const tipo = prompt('Tipo de CSV (transactions/accountMovements)', 'transactions');
+      if (tipo) importarCSV(f, tipo);
+    }
+  });
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   if ('serviceWorker' in navigator) {
     try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
@@ -2015,6 +2217,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
   document.body.setAttribute('data-theme', getTema());
+  initDragAndDrop();
+  scheduleAutoBackup();
   navegar();
   window.addEventListener("hashchange", navegar);
   if (localStorage.getItem('backupPendienteImportar')) {
