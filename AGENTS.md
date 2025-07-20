@@ -4,6 +4,7 @@
 - JavaScript is organized as multiple ES modules under `src/`.
 - The entry point is `src/app.js` and code is bundled with Rollup into `js/app.js`.
 - Keep JavaScript simple and vanilla. Avoid unused files.
+- Ignore `node_modules/` via `.gitignore`.
 
 ## Build Instructions
 Run the bundler to generate `js/app.js`:
