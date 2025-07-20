@@ -6,7 +6,7 @@
    <title>Cartera PRO</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="icon192.png" />
-  <!-- <link rel="manifest" href="manifest.json" /> -->
+  <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#2063c2" />
 </head>
 <body>
@@ -20,12 +20,11 @@
         <li><a href="#activos" data-icon="📈"><span>Activos</span></a></li>
         <li><a href="#transacciones" data-icon="💸"><span>Transacciones</span></a></li>
         <li><a href="#cuentas" data-icon="💳"><span>Cuentas</span></a></li>
-        <li><a href="#deudas" data-icon="🏦"><span>Deudas</span></a></li>
+        <li><a href="#prestamos" data-icon="🏦"><span>Préstamos</span></a></li>
         <li><a href="#tiposcambio" data-icon="💱"><span>Tipos de cambio</span></a></li>
         <li><a href="#analisisvalue" data-icon="📚"><span>Análisis Value</span></a></li>
-        <li><a href="#glosario" data-icon="❓"><span>Glosario</span></a></li>
         <li><a href="#info" data-icon="ℹ️"><span>Información</span></a></li>
-        <li><a href="#ajustes" data-icon="⚙️"><span>Ajustes</span></a></li>
+        <li><a href="#view-settings" data-icon="⚙️"><span>Ajustes</span></a></li>
       </ul>
     </nav>
     <footer style="margin-top:auto;padding:20px;font-size:0.88em;">
@@ -38,17 +37,14 @@
 
   <div class="main-content">
     <main id="app"></main>
-    <div id="detalle-activo"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dexie-observable@1.1.1/dist/dexie-observable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.3/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="js/app.js"></script>
   <script id="version-data" type="application/json">
     {
-      "version": "alpha 0.7.1.11",
+      "version": "alpha 0.7.1.8",
       "date": "2025-07-21"
     }
   </script>

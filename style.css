@@ -128,13 +128,6 @@ main {
   margin: 0 auto;
 }
 
-#detalle-activo {
-  display: none;
-  padding: var(--gap-lg);
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
 .card {
   background: var(--color-card);
   border-radius: var(--radius-md);
@@ -381,25 +374,4 @@ footer {
 }
 .filtros-table input[type="search"] {
   flex: 1 1 160px;
-}
-
-/* ----- Ayudas y alertas ----- */
-.help {
-  cursor: help;
-  border-bottom: 1px dotted var(--color-muted);
-}
-
-.alert {
-  background: var(--sidebar-bg);
-  padding: var(--gap-sm);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--gap-md);
-  font-weight: bold;
-}
-.alert.cumplido { color: var(--color-positivo); }
-.alert.pendiente { color: var(--color-negativo); }
-.prioridad {
-  color: var(--color-accent);
-  margin-right: 4px;
-  font-weight: bold;
 }

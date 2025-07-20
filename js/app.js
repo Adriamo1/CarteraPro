@@ -1,14 +1,14 @@
 // app.js sin módulos, todo local
 // Definición principal de la base de datos usando Dexie
-const db = new Dexie('cartera-pro');
+const db = new Dexie('carteraPRO');
 db.version(1).stores({
-  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
-  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  activos: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transacciones: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
   movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
   cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
   tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
-  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
-  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  gastos: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  ingresos: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
   suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
   bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
   prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
@@ -17,195 +17,18 @@ db.version(1).stores({
   carteras: "++id, nombre, descripcion, propietario, activos",
   documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
   logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
-  exchangeRates: "++id, moneda, tasa, fecha",
+  tiposCambio: "++id, moneda, tasa, fecha",
   interestRates: "++id, fecha, tin",
-  settings: "clave, valor"
+  ajustes: "clave, valor"
 });
-db.version(2).stores({
-  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
-  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
-  movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
-  cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
-  tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
-  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
-  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
-  suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
-  bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
-  prestamos: "++id, bienId, tipo, principal, saldoPendiente, tin, tae, plazoMeses, cuota, interesesPagados, notas",
-  seguros: "++id, bienId, tipo, prima, inicio, vencimiento, notas",
-  historico: "fecha, valorTotal, saldoCuentas, saveback, resumenPorActivo, resumenPorBien, tiposCambio",
-  carteras: "++id, nombre, descripcion, propietario, activos",
-  documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
-  logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
-  exchangeRates: "++id, moneda, tasa, fecha",
-  interestRates: "++id, fecha, tin",
-  settings: "clave, valor",
-  backups: "++id, fecha"
-});
-db.version(3).stores({
-  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
-  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
-  movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
-  cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
-  tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
-  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
-  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
-  suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
-  bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
-  deudas: "++id, tipo, descripcion, entidad, fechaInicio, fechaVencimiento, capitalInicial, tipoInteres, interesFijo, inmuebleAsociado, notas",
-  deudaMovimientos: "++id, deudaId, fecha, tipoMovimiento, importe, nota",
-  seguros: "++id, bienId, tipo, prima, inicio, vencimiento, notas",
-  historico: "fecha, valorTotal, saldoCuentas, saveback, resumenPorActivo, resumenPorBien, tiposCambio",
-  carteras: "++id, nombre, descripcion, propietario, activos",
-  documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
-  logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
-  exchangeRates: "++id, moneda, tasa, fecha",
-  interestRates: "++id, fecha, tin",
-  settings: "clave, valor",
-  backups: "++id, fecha",
-  prestamos: null
-}).upgrade(tx => tx.table('prestamos').toArray(p => tx.table('deudas').bulkAdd(p)));
-db.version(4).stores({
-  portfolioHistory: "++id, fecha, valorTotal, saldoCuenta"
-});
-db.version(5).stores({
-  deudaHistory: "++id, deudaId, fecha, saldo"
-});
-db.version(6).stores({
-  deudas: "++id, tipo, descripcion, entidad, fechaInicio, fechaVencimiento, capitalInicial, tipoInteres, interesFijo, inmuebleAsociado, notas, pagoAutomatico"
-});
-db.version(7).stores({
-  historialPatrimonio: "++id, fecha"
-});
-db.version(8).stores({
-  appdata: "key"
-});
-db.activos = db.assets;
-db.transacciones = db.transactions;
-db.gastos = db.expenses;
-db.ingresos = db.income;
-db.tiposCambio = db.exchangeRates;
-db.ajustes = db.settings;
-db.prestamos = db.deudas;
-db.movimientosDeuda = db.deudaMovimientos;
 // Para compatibilidad con versiones anteriores
 window.db = db;
 
-const STORE_NAMES = [
-  'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
-  'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'movimientosDeuda', 'seguros',
-  'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings', 'backups', 'portfolioHistory', 'deudaHistory',
-  'historialPatrimonio'
-];
-
-const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
-  obj[name] = [];
-  return obj;
-}, {});
-
-let appState = null;
-let saveTimer = null;
-
-function scheduleSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => guardarEstado(appState), 500);
-}
-
-async function cargarEstado() {
-  const stored = await db.appdata.get('app');
-  if (stored && stored.data) {
-    appState = stored.data;
-    const ops = [];
-    for (const name of STORE_NAMES) {
-      await db[name].clear();
-      if (appState[name] && appState[name].length) {
-        ops.push(db[name].bulkPut(appState[name]));
-      }
-    }
-    await Promise.all(ops);
-    return appState;
-  }
-  const datos = {};
-  for (const name of STORE_NAMES) {
-    datos[name] = await db[name].toArray();
-  }
-  if (Object.values(datos).every(arr => arr.length === 0)) {
-    await guardarEstado(DEFAULT_DATA);
-    Object.assign(datos, JSON.parse(JSON.stringify(DEFAULT_DATA)));
-  }
-  appState = datos;
-  await db.appdata.put({ key: 'app', data: datos });
-  return datos;
-}
-
-async function guardarEstado(estado) {
-  const data = estado || appState;
-  if (!data) return;
-  const ops = [];
-  for (const name of STORE_NAMES) {
-    if (data[name]) ops.push(db[name].bulkPut(data[name]));
-  }
-  ops.push(db.appdata.put({ key: 'app', data }));
-  await Promise.all(ops);
-}
-
-async function actualizarEntidad(nombre, objeto) {
-  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
-  const id = await db[nombre].put(objeto);
-  if (appState && appState[nombre]) {
-    const idx = appState[nombre].findIndex(e => e.id === id);
-    if (idx >= 0) appState[nombre][idx] = { ...objeto, id };
-    else appState[nombre].push({ ...objeto, id });
-  }
-  scheduleSave();
-  return id;
-}
-
-async function borrarEntidad(nombre, id) {
-  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
-  await db[nombre].delete(id);
-  if (appState && appState[nombre]) {
-    appState[nombre] = appState[nombre].filter(e => e.id !== id);
-  }
-  scheduleSave();
-}
-
-db.on('changes', changes => {
-  if (!appState) return;
-  for (const ch of changes) {
-    let name = ch.table;
-    if (name === 'deudaMovimientos') name = 'movimientosDeuda';
-    if (name === 'prestamos') name = 'deudas';
-    if (!appState[name]) continue;
-    if (ch.type === 1 || ch.type === 'create') {
-      appState[name].push({ ...(ch.obj || {}), id: ch.key });
-    } else if (ch.type === 2 || ch.type === 'update') {
-      const idx = appState[name].findIndex(e => e.id === ch.key);
-      if (idx >= 0) Object.assign(appState[name][idx], ch.obj || ch.mods || {});
-    } else if (ch.type === 3 || ch.type === 'delete') {
-      appState[name] = appState[name].filter(e => e.id !== ch.key);
-    }
-  }
-  if (changes.some(c => ['assets','transactions','movimientos','cuentas','deudas','deudaMovimientos'].includes(c.table))) {
-    registrarHistoricoCartera();
-    registrarHistorialPatrimonio();
-  }
-  scheduleSave();
-});
-
 
 const app = document.getElementById("app");
-
 const state = {
   accountMovements: [],
   interestRates: [],
-  portfolioHistory: [],
-  deudaHistory: [],
-  historialPatrimonio: [],
-  deudas: [],
-  movimientosDeuda: [],
-  exchangeRates: {},
   settings: { lastExchangeUpdate: null }
 };
 const hasChart = typeof Chart !== 'undefined';
@@ -267,30 +90,21 @@ function getUserSetting(key) {
   return ajustesCache[key] ?? null;
 }
 
-function getEntidadesFinancieras() {
-  let list = getUserSetting("entidadesFinancieras");
-  if (Array.isArray(list)) return [...new Set(list.map(s => s.trim()).filter(Boolean))];
-  const brokers = getUserSetting("brokers") || [
+function getBrokers() {
+  return getUserSetting("brokers") || [
     "Trade Republic", "Revolut", "Binance", "DEGIRO",
     "MyInvestor", "Interactive Brokers"
   ];
-  const bancos = getUserSetting("bancos") || [
+}
+function setBrokers(list) { return saveUserSetting("brokers", list); }
+
+function getBancos() {
+  return getUserSetting("bancos") || [
     "BBVA", "CaixaBank", "Santander", "ING",
     "Openbank", "EVO", "Revolut"
   ];
-  list = [...new Set([...brokers, ...bancos])];
-  saveUserSetting("entidadesFinancieras", list);
-  return list;
 }
-function setEntidadesFinancieras(list) {
-  const unique = [...new Set(list.map(s => s.trim()).filter(Boolean))];
-  return saveUserSetting("entidadesFinancieras", unique);
-}
-
-function actualizarDatalistEntidades() {
-  const dl = document.getElementById('lista-entidades');
-  if (dl) dl.innerHTML = getEntidadesFinancieras().map(e => `<option value="${e}">`).join('');
-}
+function setBancos(list) { return saveUserSetting("bancos", list); }
 
 function setTema(tema) {
   document.body.setAttribute("data-theme", tema);
@@ -354,36 +168,20 @@ function getTipoCambio() {
   return parseFloat(getUserSetting("tipo_cambio") || 1);
 }
 
-// Objeto central de rutas. Cada hash se asocia a la función
-// encargada de renderizar la vista correspondiente. Añade o
-// modifica aquí las secciones para que el router las reconozca.
 const vistas = {
   "#inicio": renderResumen,
   "#dashboard": renderDashboard,
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
   "#cuentas": renderCuentas,
-  "#deudas": renderDeudas,
-  "#planpagos": renderPlanPagos,
+  "#prestamos": renderPrestamos,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
-  "#glosario": renderGlosario,
   "#info": renderInfo,
   "#resumen": renderResumen,
   "#ajustes": renderAjustes,
   "#view-settings": renderAjustes
 };
-
-// Normaliza el hash recibido eliminando acentos y espacios y
-// haciendo que la navegación sea case-insensitive
-function normalizarHash(hash) {
-  if (!hash) return "#inicio";
-  let limpio = decodeURIComponent(hash.trim()).toLowerCase();
-  limpio = limpio.replace(/^#+/, "");
-  limpio = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  limpio = limpio.replace(/\s+/g, "");
-  return "#" + limpio;
-}
 
 async function calcularKpis() {
   const [activos, trans, cuentas] = await Promise.all([
@@ -421,7 +219,6 @@ async function calcularKpis() {
   });
   const unrealized = valorActivos - costeRestante;
   const rentTotal = realized + unrealized;
-  const costeTotal = Object.values(compras).reduce((s,c)=>s+c.coste,0);
 
   const valorPorTipo = activos.reduce((acc, a) => {
     const val = +a.valorActual || 0;
@@ -429,22 +226,7 @@ async function calcularKpis() {
     return acc;
   }, {});
 
-  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal };
-}
-
-async function calcularPatrimonioNeto() {
-  const [activos, cuentas, deudas] = await Promise.all([
-    db.activos.toArray(),
-    db.cuentas.where('tipo').equals('remunerada').toArray(),
-    db.deudas.toArray()
-  ]);
-  const valorActivos = activos.reduce((s, a) => s + (+a.valorActual || 0), 0);
-  const saldoCuentas = cuentas.reduce((s, c) => s + (+c.saldo || 0), 0);
-  const deudasVals = await Promise.all(deudas.map(d => calcularSaldoPendiente(d)));
-  const deudaPendiente = deudasVals.reduce((s, v) => s + v, 0);
-  const patrimonioNeto = valorActivos + saldoCuentas - deudaPendiente;
-  const ratioDeudaActivos = valorActivos ? (deudaPendiente / valorActivos) * 100 : 0;
-  return { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente, ratioDeudaActivos };
+  return { valorTotal, rentTotal, realized, unrealized, valorPorTipo };
 }
 
 async function calcularInteresMes() {
@@ -480,92 +262,6 @@ async function calcularInteresMes() {
     }
   }
   return total;
-}
-
-async function calcularInteresMesArgs(anyo, mes) {
-  const hoy = new Date();
-  const diasMes = (anyo === hoy.getFullYear() && mes === hoy.getMonth())
-    ? hoy.getDate()
-    : new Date(anyo, mes + 1, 0).getDate();
-  const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
-  if (!cuentas.length) return 0;
-  if (!state.accountMovements.length) {
-    state.accountMovements = await db.movimientos.toArray();
-  }
-  if (!state.interestRates.length) {
-    state.interestRates = await db.interestRates.toArray();
-  }
-  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  const rates = state.interestRates.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  const inicioMes = `${anyo}-${String(mes+1).padStart(2,'0')}-01`;
-  let total = 0;
-  for (const cuenta of cuentas) {
-    let saldo = (+cuenta.saldo || 0) +
-      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha < inicioMes)
-          .reduce((s,m)=>s+(+m.importe||0),0);
-    for (let d=1; d<=diasMes; d++) {
-      const fechaDia = `${anyo}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const rate = rates.filter(r=>r.fecha<=fechaDia).pop();
-      const tin = rate ? parseFloat(rate.tin) : 0;
-      total += saldo * (tin/100) / 365;
-      movs.filter(m=>m.cuentaId==cuenta.id && m.fecha===fechaDia)
-          .forEach(mov => { saldo += (+mov.importe||0); });
-    }
-  }
-  return total;
-}
-
-async function calcularInteresAnual() {
-  const hoy = new Date();
-  let total = 0;
-  for (let m = 0; m <= hoy.getMonth(); m++) {
-    total += await calcularInteresMesArgs(hoy.getFullYear(), m);
-  }
-  return total;
-}
-
-async function calcularApy() {
-  if (!state.interestRates.length) {
-    state.interestRates = await db.interestRates.toArray();
-  }
-  const rate = state.interestRates[state.interestRates.length - 1];
-  const tin = rate ? parseFloat(rate.tin) : 0;
-  return Math.pow(1 + tin / 100 / 12, 12) - 1;
-}
-
-async function saldoMedioAnual() {
-  const hoy = new Date();
-  const anyo = hoy.getFullYear();
-  if (!state.accountMovements.length) {
-    state.accountMovements = await db.movimientos.toArray();
-  }
-  const cuentas = await db.cuentas.where('tipo').equals('remunerada').toArray();
-  if (!cuentas.length) return 0;
-  const movs = state.accountMovements.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  let totalInicio = 0;
-  let totalFin = 0;
-  for (const cuenta of cuentas) {
-    const saldoFin = +cuenta.saldo || 0;
-    const movYear = movs.filter(m=>m.cuentaId==cuenta.id && m.fecha>=`${anyo}-01-01`);
-    const delta = movYear.reduce((s,m)=>s+(+m.importe||0),0);
-    const saldoIni = saldoFin - delta;
-    totalInicio += saldoIni;
-    totalFin += saldoFin;
-  }
-  return (totalInicio + totalFin) / 2;
-}
-
-async function calcularRentabilidadAnualizada() {
-  const hist = await db.portfolioHistory.orderBy('fecha').toArray();
-  if (hist.length < 2) return 0;
-  const inicio = hist[0];
-  const fin = hist[hist.length - 1];
-  const valIni = +inicio.valorTotal || 0;
-  const valFin = +fin.valorTotal || 0;
-  const dias = (new Date(fin.fecha) - new Date(inicio.fecha)) / 86400000;
-  if (valIni <= 0 || dias <= 0) return 0;
-  const anos = dias / 365;
-  return Math.pow(valFin / valIni, 1 / anos) - 1;
 }
 
 async function totalSavebackPendiente() {
@@ -607,272 +303,6 @@ async function totalDividendos() {
     .reduce((s,i)=>s+(+i.importe||0),0);
 }
 
-async function totalDeudaPendiente() {
-  const deudas = await db.deudas.toArray();
-  let total = 0;
-  for (const d of deudas) total += await calcularSaldoPendiente(d);
-  return total;
-}
-
-async function totalInteresesPagadosDeuda() {
-  const movs = await db.movimientosDeuda.toArray();
-  return movs
-    .filter(m => m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión')
-    .reduce((s,m)=>s+(+m.importe||0),0);
-}
-
-async function prioridadAmortizacionDeudas() {
-  const deudas = await db.deudas.toArray();
-  const data = [];
-  for (const d of deudas) {
-    const saldo = await calcularSaldoPendiente(d);
-    if (saldo <= 0) continue;
-    data.push({ deuda: d, saldo });
-  }
-  if (!data.length) return [];
-  const maxTin = Math.max(...data.map(r => parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0)));
-  const maxSaldo = Math.max(...data.map(r => r.saldo));
-  const maxDias = Math.max(...data.map(r => r.deuda.fechaVencimiento ? diffDias(new Date(), new Date(r.deuda.fechaVencimiento)) : 0));
-  return data.map(r => {
-    const tin = parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0);
-    const tinScore = maxTin ? tin / maxTin : 0;
-    const saldoScore = maxSaldo ? 1 - r.saldo / maxSaldo : 0;
-    let diasScore = 0;
-    if (r.deuda.fechaVencimiento) {
-      const dias = diffDias(new Date(), new Date(r.deuda.fechaVencimiento));
-      diasScore = maxDias ? 1 - Math.max(0, dias) / maxDias : 0;
-    }
-    const prioridad = (tinScore + saldoScore + diasScore) / 3;
-    return { id: r.deuda.id, prioridad };
-  }).sort((a,b) => b.prioridad - a.prioridad);
-}
-async function analizarCosteDeudasVsCuenta() {
-  if (!state.interestRates.length) {
-    state.interestRates = await db.interestRates.toArray();
-  }
-  const last = state.interestRates[state.interestRates.length - 1];
-  const tinCuenta = last ? parseFloat(last.tin) : 0;
-  const deudas = await db.deudas.toArray();
-  const res = [];
-  for (const d of deudas) {
-    const saldo = await calcularSaldoPendiente(d);
-    if (saldo <= 0) continue;
-    const tinDeuda = parseFloat(d.tipoInteres || d.tin || d.tae || 0);
-    if (tinDeuda > tinCuenta) {
-      res.push({ nombre: d.descripcion || d.tipo || 'deuda', tinCuenta, tinDeuda });
-    }
-  }
-  return res;
-}
-
-async function registrarHistoricoCartera() {
-  const { valorTotal } = await calcularKpis();
-  const { patrimonioNeto } = await calcularPatrimonioNeto();
-  const cuentas = await db.cuentas.toArray();
-  const saldoCuenta = cuentas.reduce((s,c)=>s+(+c.saldo||0),0);
-  const fecha = new Date().toISOString().slice(0,10);
-  const existente = await db.portfolioHistory.where('fecha').equals(fecha).first();
-  if (existente) {
-    await db.portfolioHistory.update(existente.id, { valorTotal, saldoCuenta, patrimonioNeto });
-  } else {
-    const id = await db.portfolioHistory.add({ fecha, valorTotal, saldoCuenta, patrimonioNeto });
-    if (appState && appState.portfolioHistory) {
-      appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta, patrimonioNeto });
-    }
-  }
-}
-
-async function registrarHistorialPatrimonio() {
-  const { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente } = await calcularPatrimonioNeto();
-  const fecha = new Date().toISOString().slice(0,10);
-  const existente = await db.historialPatrimonio.where('fecha').equals(fecha).first();
-  if (existente) {
-    await db.historialPatrimonio.update(existente.id, {
-      patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente
-    });
-    if (appState && appState.historialPatrimonio) {
-      const idx = appState.historialPatrimonio.findIndex(h=>h.id===existente.id);
-      if (idx>=0) Object.assign(appState.historialPatrimonio[idx], { patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
-    }
-  } else {
-    const id = await db.historialPatrimonio.add({ fecha, patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
-    if (appState && appState.historialPatrimonio) {
-      appState.historialPatrimonio.push({ id, fecha, patrimonioNeto, activos: valorActivos, cuentas: saldoCuentas, deudas: deudaPendiente });
-    }
-  }
-}
-
-async function registrarHistoricoDeuda(deudaId, fecha) {
-  const saldo = await calcularSaldoPendiente(deudaId);
-  const f = fecha || new Date().toISOString().slice(0,10);
-  const existe = await db.deudaHistory.where({ deudaId, fecha: f }).first();
-  if (existe) {
-    await db.deudaHistory.update(existe.id, { saldo });
-    if (appState && appState.deudaHistory) {
-      const idx = appState.deudaHistory.findIndex(h=>h.id===existe.id);
-      if (idx>=0) appState.deudaHistory[idx].saldo = saldo;
-    }
-  } else {
-    const id = await db.deudaHistory.add({ deudaId, fecha: f, saldo });
-    if (appState && appState.deudaHistory) {
-      appState.deudaHistory.push({ id, deudaId, fecha: f, saldo });
-    }
-  }
-}
-
-async function obtenerHistorialDeuda(deudaId) {
-  let hist = await db.deudaHistory.where('deudaId').equals(deudaId).sortBy('fecha');
-  if (!hist.length) {
-    const deuda = await db.deudas.get(deudaId);
-    if (!deuda) return [];
-    const movs = await db.movimientosDeuda.where('deudaId').equals(deudaId).toArray();
-    movs.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
-    let saldo = +deuda.capitalInicial || 0;
-    hist = [];
-    for (const m of movs) {
-      if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
-        saldo -= (+m.importe || 0);
-        const item = { deudaId, fecha: m.fecha, saldo };
-        hist.push(item);
-      }
-    }
-    if (hist.length) await db.deudaHistory.bulkAdd(hist);
-  }
-  return hist;
-}
-
-async function renderGraficoHistorialDeuda(id) {
-  if (!hasChart) return;
-  const hist = await obtenerHistorialDeuda(id);
-  if (!hist.length) return;
-  const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
-  movs.sort((a,b)=> new Date(a.fecha)-new Date(b.fecha));
-  const mapInt = {};
-  let total = 0;
-  for (const m of movs) {
-    if (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión') {
-      total += (+m.importe || 0);
-    }
-    if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
-      mapInt[m.fecha] = total;
-    }
-  }
-  const labels = hist.map(h=>h.fecha);
-  const saldos = hist.map(h=>h.saldo);
-  const intereses = hist.map(h=>mapInt[h.fecha] || 0);
-  const ctx = document.getElementById('grafico-saldo-deuda');
-  if (!ctx) return;
-  new Chart(ctx.getContext('2d'), {
-    type:'line',
-    data:{labels, datasets:[
-      {label:'Saldo', data:saldos, borderColor:'#3498db', tension:0.2},
-      {label:'Interés acumulado', data:intereses, borderColor:'#e67e22', tension:0.2}
-    ]},
-    options:{responsive:true}
-  });
-}
-
-async function datosComparativaDeudas() {
-  const [deudas, movs] = await Promise.all([
-    db.deudas.toArray(),
-    db.movimientosDeuda.toArray()
-  ]);
-  let saldoHip = 0, saldoPres = 0, intHip = 0, intPres = 0;
-  for (const d of deudas) {
-    const tipo = (d.tipo || '').toLowerCase().includes('hipotec') ? 'hip' : 'pre';
-    const saldo = await calcularSaldoPendiente(d);
-    const intereses = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión'))
-      .reduce((s,m)=>s+(+m.importe||0),0);
-    if (tipo === 'hip') {
-      saldoHip += saldo;
-      intHip += intereses;
-    } else {
-      saldoPres += saldo;
-      intPres += intereses;
-    }
-  }
-  return { saldoHip, saldoPres, intHip, intPres };
-}
-
-async function renderGraficoComparativaDeudas() {
-  if (!hasChart) return;
-  const datos = await datosComparativaDeudas();
-  const ctx = document.getElementById('grafico-deudas');
-  if (!ctx) return;
-  new Chart(ctx.getContext('2d'), {
-    type:'bar',
-    data:{
-      labels:['Saldo pendiente','Intereses pagados'],
-      datasets:[
-        {label:'Hipoteca', data:[datos.saldoHip, datos.intHip], backgroundColor:'#2063c2'},
-        {label:'Préstamo', data:[datos.saldoPres, datos.intPres], backgroundColor:'#70c1b3'}
-      ]
-    },
-    options:{responsive:true}
-  });
-}
-
-async function obtenerCuotasProximas() {
-  const [deudas, movs] = await Promise.all([
-    db.deudas.toArray(),
-    db.movimientosDeuda.toArray()
-  ]);
-  const hoy = new Date();
-  const pagos = [];
-  for (const d of deudas) {
-    const lista = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'))
-      .sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
-    let fecha = lista[0] ? new Date(lista[0].fecha) : new Date(d.fechaInicio || hoy);
-    if (isNaN(fecha)) fecha = hoy;
-    fecha.setMonth(fecha.getMonth() + 1);
-    while (fecha <= hoy) fecha.setMonth(fecha.getMonth() + 1);
-    if (d.fechaVencimiento && new Date(d.fechaVencimiento) < fecha) continue;
-    const info = await calcularAmortizacionDeuda(d);
-    if (!info) continue;
-    pagos.push({
-      id: d.id,
-      descripcion: d.descripcion || d.entidad || d.tipo,
-      fecha: fecha.toISOString().slice(0,10),
-      cuota: info.cuota,
-      interes: info.interes,
-      capital: info.capital
-    });
-  }
-  return pagos.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
-}
-
-function totalesPagosMes(pagos) {
-  const hoy = new Date();
-  const m = hoy.getMonth();
-  const y = hoy.getFullYear();
-  const m2 = (m + 1) % 12;
-  const y2 = m === 11 ? y + 1 : y;
-  let t1 = 0, t2 = 0;
-  for (const p of pagos) {
-    const f = new Date(p.fecha);
-    if (f.getFullYear() === y && f.getMonth() === m) t1 += p.cuota;
-    if (f.getFullYear() === y2 && f.getMonth() === m2) t2 += p.cuota;
-  }
-  return { actual: t1, siguiente: t2 };
-}
-
-async function renderPlanPagos() {
-  const pagos = await obtenerCuotasProximas();
-  const tot = totalesPagosMes(pagos);
-  const filas = pagos.map(p => `<tr><td>${p.fecha}</td><td>${p.descripcion}</td><td>${formatCurrency(p.cuota)}</td></tr>`).join('');
-  app.innerHTML = `
-    <div class="card">
-      <h2>Planificador mensual</h2>
-      <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-icon">📅</div><div><div>Pagos mes actual</div><div class="kpi-value">${formatCurrency(tot.actual)}</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">⏭️</div><div><div>Pagos mes siguiente</div><div class="kpi-value">${formatCurrency(tot.siguiente)}</div></div></div>
-      </div>
-      <table class="tabla responsive-table"><thead><tr><th>Fecha</th><th>Deuda</th><th>Cuota</th></tr></thead><tbody>${filas}</tbody></table>
-      <button class="btn" id="volver-deudas">Volver</button>
-    </div>`;
-  document.getElementById('volver-deudas').onclick = () => history.back();
-}
-
 // Agrupa activos por broker contando número y valor
 async function resumenPorBroker() {
   const activos = await db.activos.toArray();
@@ -897,19 +327,14 @@ async function activoMayorValor() {
   return max;
 }
 
-function router() {
-  const raw = location.hash || "#inicio";
-  const hash = normalizarHash(raw);
+function navegar() {
+  const hash = location.hash || "#dashboard";
   const render = vistas[hash];
-  app.innerHTML = "";
-  if (render) {
-    render();
-  } else {
-    app.innerHTML = `<div class="card"><h2>404 - Secci&oacute;n no encontrada</h2></div>`;
-  }
-  document.querySelectorAll("aside a").forEach(a => {
-    a.classList.toggle("active", normalizarHash(a.getAttribute("href")) === hash);
-  });
+  if (render) render();
+  else app.innerHTML = `<div class="card"><h2>Error</h2><p>Ruta desconocida: ${hash}</p></div>`;
+  document.querySelectorAll("aside a").forEach(a =>
+    a.classList.toggle("active", a.getAttribute("href") === hash)
+  );
 }
 
 // Vistas
@@ -928,63 +353,21 @@ function renderResumen() {
 }
 
 async function renderDashboard() {
-  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo, costeTotal } = await calcularKpis();
-  const { patrimonioNeto, valorActivos, saldoCuentas, deudaPendiente, ratioDeudaActivos } = await calcularPatrimonioNeto();
-  const hist = await db.portfolioHistory.orderBy('fecha').reverse().limit(2).toArray();
-  let variacion = 0;
-  if (hist.length === 2) {
-    variacion = patrimonioNeto - (hist[1].patrimonioNeto || 0);
-  }
+  const { valorTotal, rentTotal, realized, unrealized, valorPorTipo } = await calcularKpis();
   const interesMes = await calcularInteresMes();
-  const interesAnual = await calcularInteresAnual();
-  const apy = await calcularApy();
-  const cagr = await calcularRentabilidadAnualizada();
   const savePend = await totalSavebackPendiente();
   const efectoDivisa = await calcularEfectoDivisa();
   const dividendos = await totalDividendos();
   const brokerRes = await resumenPorBroker();
   const mayor = await activoMayorValor();
-  const interesPagado = await totalInteresesPagadosDeuda();
   const porTipoHtml = Object.entries(valorPorTipo)
-    .map(([t, v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
-  const roi = costeTotal ? (rentTotal / costeTotal) * 100 : 0;
-  const objetivo = getObjetivoRentabilidad();
-  const cumplido = roi >= objetivo && objetivo > 0;
+    .map(([t,v]) => `<div>${t}: ${formatCurrency(v)}</div>`).join('');
   const brokerHtml = Object.entries(brokerRes)
     .map(([b,d]) => `<div>${b}: ${d.count} / ${formatCurrency(d.valor)}</div>`)
     .join('');
-  const amortizaciones = await analizarCosteDeudasVsCuenta();
-  const alertaAmort = amortizaciones.length
-    ? '<div class="alert pendiente">' +
-        amortizaciones.map(a => `💡 Tu cuenta remunera al ${a.tinCuenta}% pero estás pagando un ${a.tinDeuda}% por tu deuda ${a.nombre}. Podrías amortizar para ahorrar intereses.`).join('<br>') +
-      '</div>'
-    : '';
   app.innerHTML = `
     <h2>Panel de control</h2>
-    ${objetivo>0?`<div class="alert ${cumplido?'cumplido':'pendiente'}">${cumplido?'🎯 ¡Has alcanzado tu objetivo anual de rentabilidad! <button id="reset-obj" class="btn btn-small">Reiniciar</button>':'Objetivo a '+(objetivo-roi).toFixed(2)+' %'}</div>`:''}
-    ${alertaAmort}
     <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-icon">💎</div>
-        <div>
-          <div>Patrimonio neto</div>
-          <div class="kpi-value ${patrimonioNeto>=0?'kpi-positivo':'kpi-negativo'}">${formatCurrency(patrimonioNeto)} ${variacion>0?'⬆️':variacion<0?'⬇️':''}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">📊</div>
-        <div>
-          <div>Valor activos</div>
-          <div class="kpi-value">${formatCurrency(valorActivos)}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">🏦</div>
-        <div>
-          <div>Cuentas remuneradas</div>
-          <div class="kpi-value">${formatCurrency(saldoCuentas)}</div>
-        </div>
-      </div>
       <div class="kpi-card">
         <div class="kpi-icon">💰</div>
         <div>
@@ -1013,22 +396,6 @@ async function renderDashboard() {
         <div>
           <div>Interés devengado (mes)</div>
           <div class="kpi-value">${formatCurrency(interesMes)}</div>
-          <div>Interés anual</div>
-          <div class="kpi-value">${formatCurrency(interesAnual)}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">🎯</div>
-        <div>
-          <div>Rentabilidad cartera <span class="help" title="ROI"></span></div>
-          <div class="kpi-value ${roi>=0?'kpi-positivo':'kpi-negativo'}">${roi.toFixed(2)}% ${cumplido?'🏆':''}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">📆</div>
-        <div>
-          <div>Rentabilidad anualizada <span class="help" title="(valorFinal / valorInicial)^(1/años) - 1">?</span></div>
-          <div class="kpi-value ${cagr>=0?'kpi-positivo':'kpi-negativo'}">${(cagr*100).toFixed(2)}%</div>
         </div>
       </div>
       <div class="kpi-card">
@@ -1060,27 +427,6 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-icon">🏦</div>
-        <div>
-          <div>Deuda pendiente</div>
-          <div class="kpi-value">${formatCurrency(deudaPendiente)}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">💸</div>
-        <div>
-          <div>Intereses pagados</div>
-          <div class="kpi-value">${formatCurrency(interesPagado)}</div>
-        </div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-icon">%🏦</div>
-        <div>
-          <div>Deuda / activos</div>
-          <div class="kpi-value">${ratioDeudaActivos.toFixed(2)}%</div>
-        </div>
-      </div>
-      <div class="kpi-card">
         <div class="kpi-icon">🏦📊</div>
         <div>
           <div>Distribución por broker</div>
@@ -1096,29 +442,17 @@ async function renderDashboard() {
         </div>
       </div>
     </div>
-    <div class="card"><h3>P&L por activo <span class="help" title="Beneficio o pérdida"></span></h3><canvas id="grafico-pnl" height="160"></canvas></div>
-    <div class="card"><h3>Composición del patrimonio</h3><canvas id="grafico-patrimonio" height="160"></canvas></div>
-    <div class="card"><h3>Saveback y TIN <span class="help" title="Ahorro para inversiones y tipo nominal"></span></h3><canvas id="grafico-saveback" height="160"></canvas></div>
+    <div class="card"><h3>P&L por activo</h3><canvas id="grafico-pnl" height="160"></canvas></div>
+    <div class="card"><h3>Saveback y TIN</h3><canvas id="grafico-saveback" height="160"></canvas></div>
     <div class="card"><h3>Asignación actual vs objetivo</h3><canvas id="grafico-asignacion" height="160"></canvas></div>
     <div class="card"><h3>Distribución por divisa</h3><canvas id="grafico-divisa" height="160"></canvas></div>
     <div class="card"><h3>Distribución por sector</h3><canvas id="grafico-sector" height="160"></canvas></div>
     <div class="card"><h3>Distribución por tipo de activo</h3><canvas id="grafico-tipo" height="160"></canvas></div>
     <div class="card"><h3>Evolución de la cartera</h3><canvas id="grafico-evolucion" height="160"></canvas></div>
-    <div class="card"><h3>Evolución patrimonio neto <select id="filtro-hpat"><option value="">Todo</option><option value="30">30 días</option><option value="180">6 meses</option></select></h3><canvas id="grafico-hist-patrimonio" height="160"></canvas></div>
     <div class="card"><h3>Distribución por broker</h3><canvas id="grafico-broker" height="160"></canvas></div>
-    <button class="btn" id="btn-plan-pagos">Planificador mensual de deudas</button>
     `;
 
   renderGraficosDashboard();
-  renderGraficoHistorialPatrimonio();
-  const btnReset = document.getElementById('reset-obj');
-  if (btnReset) btnReset.onclick = () => {
-    setObjetivoRentabilidad(0).then(renderDashboard);
-  };
-  const planBtn = document.getElementById('btn-plan-pagos');
-  if (planBtn) planBtn.onclick = () => { location.hash = '#planpagos'; };
-  const selH = document.getElementById('filtro-hpat');
-  if (selH) selH.onchange = renderGraficoHistorialPatrimonio;
 }
 
 async function renderActivos() {
@@ -1132,18 +466,7 @@ async function renderActivos() {
       <form id="form-activo">
         <input name="nombre" placeholder="Nombre" required />
         <input name="ticker" placeholder="Ticker" required />
-        <select name="tipo" id="tipo-activo">
-          <option value="Acción">Acción</option>
-          <option value="ETF">ETF</option>
-          <option value="Fondo de inversión">Fondo de inversión</option>
-          <option value="Plan de pensiones">Plan de pensiones</option>
-          <option value="REIT">REIT</option>
-          <option value="Inmueble">Inmueble</option>
-          <option value="Metales preciosos">Metales preciosos</option>
-          <option value="Cripto">Cripto</option>
-          <option value="Otro">Otro</option>
-        </select>
-        <input name="tipo-personal" id="tipo-personal" placeholder="Tipo personal" style="display:none" />
+        <input name="tipo" placeholder="Tipo" required />
         <input name="moneda" placeholder="Moneda" value="EUR" required />
         <button class="btn">Guardar</button>
         <button type="button" class="btn" id="exportar-activos">Exportar Activos (CSV)</button>
@@ -1185,26 +508,6 @@ async function renderActivos() {
   }
   html += '</div>';
   app.innerHTML = html;
-  if (!document.getElementById('lista-entidades')) {
-    const dl = document.createElement('datalist');
-    dl.id = 'lista-entidades';
-    document.body.appendChild(dl);
-  }
-  actualizarDatalistEntidades();
-
-  const selTipo = document.getElementById('tipo-activo');
-  const inputPersonal = document.getElementById('tipo-personal');
-  if (selTipo) {
-    selTipo.onchange = () => {
-      if (selTipo.value === 'Otro') {
-        inputPersonal.style.display = 'block';
-        inputPersonal.required = true;
-      } else {
-        inputPersonal.style.display = 'none';
-        inputPersonal.required = false;
-      }
-    };
-  }
 
   document.getElementById('toggle-activos').onclick = () => {
     setVista('activos', modo === 'detalle' ? 'resumen' : 'detalle');
@@ -1215,8 +518,7 @@ async function renderActivos() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
-    if (data["tipo"] === "Otro") data["tipo"] = data["tipo-personal"] || "Otro";
-    actualizarEntidad('assets', data).then(renderActivos);
+    db.activos.add(data).then(renderActivos);
   };
 
   document.getElementById("exportar-activos").onclick = async () => {
@@ -1233,12 +535,6 @@ async function renderActivos() {
   };
 
   function attachRowHandlers() {
-    document.querySelectorAll('.ver-activo').forEach(a => {
-      a.onclick = e => {
-        e.preventDefault();
-        mostrarDetalleActivo(Number(a.dataset.id));
-      };
-    });
     document.querySelectorAll('.edit-act').forEach(btn => {
       btn.onclick = async () => {
         const id = Number(btn.dataset.id);
@@ -1253,7 +549,7 @@ async function renderActivos() {
         const row = btn.closest('tr');
         mostrarConfirmacion('¿Eliminar este activo?', async () => {
           await db.transacciones.where('activoId').equals(id).delete();
-          await borrarEntidad('assets', id);
+          await db.activos.delete(id);
           row.remove();
         });
       };
@@ -1278,7 +574,7 @@ async function renderActivos() {
         return okTexto && okTipo && okMon;
       }).map(a => `
         <tr data-id="${a.id}">
-          <td><a href="#" class="ver-activo" data-id="${a.id}">${a.nombre}</a></td>
+          <td>${a.nombre}</td>
           <td>${a.ticker}</td>
           <td>${a.tipo}</td>
           <td>${a.moneda}</td>
@@ -1312,12 +608,7 @@ async function renderActivos() {
 }
 
 function renderTransacciones() {
-  Promise.all([
-    db.transacciones.toArray(),
-    db.activos.toArray(),
-    db.ingresos.toArray(),
-    db.gastos.toArray()
-  ]).then(([trans, activos, ingresos, gastos]) => {
+  Promise.all([db.transacciones.toArray(), db.activos.toArray()]).then(([trans, activos]) => {
     const mapa = Object.fromEntries(activos.map(a => [a.id, a]));
     const total = trans.length;
     const tipos = [...new Set(activos.map(a => a.tipo))];
@@ -1342,16 +633,6 @@ function renderTransacciones() {
       <table class="responsive-table"><thead><tr>
           <th>Fecha</th><th>Activo</th><th>Tipo</th><th>Cant.</th><th>Precio</th><th>Comisión</th><th></th>
       </tr></thead><tbody></tbody></table>
-    </div>
-    <div class="card">
-      <h3>Ingresos</h3>
-      <button class="btn" id="add-ingreso">Añadir ingreso</button>
-      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Origen</th><th></th></tr></thead><tbody id="ingresos-body"></tbody></table>
-    </div>
-    <div class="card">
-      <h3>Gastos</h3>
-      <button class="btn" id="add-gasto">Añadir gasto</button>
-      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Categoría</th><th></th></tr></thead><tbody id="gastos-body"></tbody></table>
     </div>`;
 
     document.getElementById("exportar-trans").onclick = async () => {
@@ -1377,7 +658,7 @@ function renderTransacciones() {
           const id = Number(btn.dataset.id);
           const row = btn.closest('tr');
           mostrarConfirmacion('¿Eliminar esta transacción?', async () => {
-            await borrarEntidad('transactions', id);
+            await db.transacciones.delete(id);
             row.remove();
           });
         };
@@ -1420,90 +701,23 @@ function renderTransacciones() {
       attachHandlers();
     };
 
-    const ingBody = document.getElementById('ingresos-body');
-    const gasBody = document.getElementById('gastos-body');
-    if (ingBody) {
-      ingBody.innerHTML = ingresos.map(i => `
-        <tr data-id="${i.id}">
-          <td data-label="Fecha">${i.fecha || ''}</td>
-          <td data-label="Importe">${formatCurrency(i.importe)}</td>
-          <td data-label="Tipo">${i.tipo || ''}</td>
-          <td data-label="Origen">${i.origen || ''}</td>
-          <td>
-            <button class="btn btn-small edit-ingreso" data-id="${i.id}">✏️</button>
-            <button class="btn btn-small del-ingreso" data-id="${i.id}">🗑️</button>
-          </td>
-        </tr>`).join('');
-    }
-    if (gasBody) {
-      gasBody.innerHTML = gastos.map(g => `
-        <tr data-id="${g.id}">
-          <td data-label="Fecha">${g.fecha || ''}</td>
-          <td data-label="Importe">${formatCurrency(g.importe)}</td>
-          <td data-label="Tipo">${g.tipo || ''}</td>
-          <td data-label="Categoría">${g.categoria || ''}</td>
-          <td>
-            <button class="btn btn-small edit-gasto" data-id="${g.id}">✏️</button>
-            <button class="btn btn-small del-gasto" data-id="${g.id}">🗑️</button>
-          </td>
-        </tr>`).join('');
-    }
-
     buscar.addEventListener('input', filtrar);
     selTipo.addEventListener('change', filtrar);
     selMoneda.addEventListener('change', filtrar);
     filtrar();
-
-    document.getElementById('add-ingreso').onclick = () => mostrarModalIngreso();
-    document.querySelectorAll('.edit-ingreso').forEach(b => b.onclick = async () => {
-      const ing = await db.ingresos.get(Number(b.dataset.id));
-      if (ing) mostrarModalIngreso(ing);
-    });
-    document.querySelectorAll('.del-ingreso').forEach(b => b.onclick = () => {
-      const id = Number(b.dataset.id);
-      mostrarConfirmacion('¿Eliminar este ingreso?', async () => {
-        await borrarEntidad('income', id);
-        renderTransacciones();
-      });
-    });
-    document.getElementById('add-gasto').onclick = () => mostrarModalGasto();
-    document.querySelectorAll('.edit-gasto').forEach(b => b.onclick = async () => {
-      const g = await db.gastos.get(Number(b.dataset.id));
-      if (g) mostrarModalGasto(g);
-    });
-    document.querySelectorAll('.del-gasto').forEach(b => b.onclick = () => {
-      const id = Number(b.dataset.id);
-      mostrarConfirmacion('¿Eliminar este gasto?', async () => {
-        await borrarEntidad('expenses', id);
-        renderTransacciones();
-      });
-    });
   });
 }
 
 async function renderCuentas() {
   const cuentas = await db.cuentas.toArray();
-  const tinActual = state.interestRates[state.interestRates.length-1]?.tin || 0;
-  const tae = (await calcularApy())*100;
-  const interesMes = await calcularInteresMes();
-  const interesAnual = await calcularInteresAnual();
-  const saldoMedio = await saldoMedioAnual();
-  const rentEfec = saldoMedio ? (interesAnual / saldoMedio) * 100 : 0;
   const modo = getVista('cuentas');
   let html = `<div class="card">
       <h2>Cuentas</h2>
-      <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN actual <span class="help" title="Tipo nominal"></span></div><div class="kpi-value">${tinActual}%</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">🔄</div><div><div>TAE estimada <span class="help" title="Tasa anual equivalente"></span></div><div class="kpi-value">${tae.toFixed(2)}%</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">💵</div><div><div>Interés mes</div><div class="kpi-value">${formatCurrency(interesMes)}</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Interés anual</div><div class="kpi-value">${formatCurrency(interesAnual)}</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">✅</div><div><div>Rent. efectiva</div><div class="kpi-value">${rentEfec.toFixed(2)}%</div></div></div>
-      </div>
       <button id="toggle-cuentas" class="btn">${modo === 'detalle' ? 'Vista resumen' : 'Ver detalles'}</button>
       <button id="add-mov" class="btn">Añadir movimiento</button>
       <form id="form-cuenta">
         <input name="nombre" placeholder="Nombre" required />
-        <input name="banco" placeholder="Entidad" list="lista-entidades" required />
+        <input name="banco" placeholder="Banco" required />
         <input name="tipo" placeholder="Tipo" value="corriente" required />
         <input name="saldo" placeholder="Saldo" type="number" step="any" value="0" required />
         <button class="btn">Guardar</button>
@@ -1513,31 +727,21 @@ async function renderCuentas() {
   } else {
       for (const c of cuentas) {
         const movs = await db.movimientos.where('cuentaId').equals(c.id).toArray();
-        const filas = movs.map(m => `<tr data-id="${m.id}">
+        const filas = movs.map(m => `<tr>
             <td data-label="Fecha">${m.fecha}</td>
             <td data-label="Importe">${formatCurrency(m.importe)}</td>
             <td data-label="Concepto" class="col-ocultar">${m.descripcion||''}</td>
-            <td>
-              <button class="btn btn-small edit-mov" data-id="${m.id}">✏️</button>
-              <button class="btn btn-small del-mov" data-id="${m.id}">🗑️</button>
-            </td>
           </tr>`).join('');
         const interes = (c.saldo || 0) * 0.01;
         html += `<section class="detalle">
           <h3>${c.nombre}</h3>
-          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+          <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Concepto</th></tr></thead><tbody>${filas}</tbody></table>
           <div class="mini-explica">Interés estimado: ${formatCurrency(interes)}</div>
         </section>`;
       }
   }
   html += '</div>';
   app.innerHTML = html;
-  if (!document.getElementById('lista-entidades')) {
-    const dl = document.createElement('datalist');
-    dl.id = 'lista-entidades';
-    document.body.appendChild(dl);
-  }
-  actualizarDatalistEntidades();
 
   document.getElementById('toggle-cuentas').onclick = () => {
     setVista('cuentas', modo === 'detalle' ? 'resumen' : 'detalle');
@@ -1548,35 +752,6 @@ async function renderCuentas() {
     mostrarModalMovimiento(cuentas);
   };
 
-  function attachMovHandlers() {
-    document.querySelectorAll('.edit-mov').forEach(btn => {
-      btn.onclick = async () => {
-        const id = Number(btn.dataset.id);
-        const mov = await db.movimientos.get(id);
-        if (mov) mostrarModalMovimiento(cuentas, mov);
-      };
-    });
-    document.querySelectorAll('.del-mov').forEach(btn => {
-      btn.onclick = () => {
-        const id = Number(btn.dataset.id);
-        const row = btn.closest('tr');
-        mostrarConfirmacion('¿Eliminar este movimiento?', async () => {
-          const mov = await db.movimientos.get(id);
-          await borrarEntidad('movimientos', id);
-          if (mov) {
-            const c = await db.cuentas.get(mov.cuentaId);
-            await db.cuentas.update(mov.cuentaId, { saldo: (+c.saldo || 0) - mov.importe });
-          }
-          row.remove();
-          renderCuentas();
-          if (location.hash === '#dashboard') renderDashboard();
-        });
-      };
-    });
-  }
-
-  attachMovHandlers();
-
   document.getElementById('form-cuenta').onsubmit = e => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1586,97 +761,22 @@ async function renderCuentas() {
   };
 }
 
-async function renderDeudas() {
-  const deudas = await db.deudas.toArray();
-  const movs = await db.movimientosDeuda.toArray();
-  let totalSaldo = 0, totalIntereses = 0, sumTinSaldo = 0;
-  let proxVenc = null;
-  let hayAlertas = false;
-  const prioridades = await prioridadAmortizacionDeudas();
-  const topPrioridad = new Set(prioridades.slice(0,3).map(p=>p.id));
-  const filas = await Promise.all(deudas.map(async d => {
-    const saldo = await calcularSaldoPendiente(d);
-    const pagos = (+d.capitalInicial || 0) - saldo;
-    const intereses = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión'))
-      .reduce((s,m)=>s+(+m.importe||0),0);
-    totalSaldo += saldo;
-    totalIntereses += intereses;
-    const tin = parseFloat(d.tipoInteres || d.tin || 0);
-    sumTinSaldo += saldo * tin;
-    const vencDate = d.fechaVencimiento ? new Date(d.fechaVencimiento) : null;
-    if (vencDate && (!proxVenc || vencDate < proxVenc)) proxVenc = vencDate;
-    const pagosDeuda = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'))
-      .sort((a,b)=> new Date(b.fecha)-new Date(a.fecha));
-    const lastPago = pagosDeuda[0]?.fecha;
-    const sinPagoReciente = !lastPago || (new Date() - new Date(lastPago)) / 86400000 > 90;
-    const vencida = vencDate && vencDate < new Date() && saldo > 0;
-    hayAlertas = hayAlertas || vencida || sinPagoReciente;
-    const alertIcons = `${vencida ? '⚠️' : ''}${sinPagoReciente ? ' ⏰' : ''}`;
-    const pri = topPrioridad.has(d.id) ? '<span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>' : '';
-    return `<tr data-id="${d.id}">
-      <td>${pri}${d.tipo || ''}</td>
-      <td>${d.entidad || ''}</td>
-      <td>${formatCurrency(d.capitalInicial)}</td>
-      <td>${formatCurrency(saldo)}</td>
-      <td>${d.tipoInteres || d.tin || 0}%</td>
-      <td>${d.fechaVencimiento || ''} ${alertIcons}</td>
-      <td>
-        <button class="btn btn-small ver-deuda" data-id="${d.id}">Ver</button>
-        <button class="btn btn-small edit-deuda" data-id="${d.id}">✏️</button>
-        <button class="btn btn-small del-deuda" data-id="${d.id}">🗑️</button>
-      </td>
-    </tr>`;
-  }));
-
-  const sugerencias = await analizarCosteDeudasVsCuenta();
-
-  const tinMedio = totalSaldo ? (sumTinSaldo / totalSaldo).toFixed(2) : 0;
-  const proxVencStr = proxVenc ? proxVenc.toISOString().slice(0,10) : '-';
-  const tipos = [...new Set(deudas.map(d=>d.tipo).filter(Boolean))];
+async function renderPrestamos() {
+  const prestamos = await db.prestamos.toArray();
   let html = `<div class="card">
-      <h2>Deudas</h2>
-      ${hayAlertas?'<div class="alert pendiente">Hay deudas vencidas o sin pagos recientes</div>':''}
-      ${sugerencias.length?'<div class="alert pendiente">'+sugerencias.map(s=>s).join('<br>')+'</div>':''}
-      <div class="filtros-table"><select id="filtro-deuda-tipo"><option value="">Todas</option>${tipos.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
-      <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-icon">💰</div><div><div>Total pendiente</div><div class="kpi-value">${formatCurrency(totalSaldo)}</div></div></div>
-        <div class="kpi-card"><div class="kpi-icon">💸</div><div><div>Intereses pagados</div><div class="kpi-value">${formatCurrency(totalIntereses)}</div></div></div>
-      <div class="kpi-card"><div class="kpi-icon">%📈</div><div><div>TIN medio</div><div class="kpi-value">${tinMedio}%</div></div></div>
-      <div class="kpi-card"><div class="kpi-icon">📆</div><div><div>Próx. vencimiento</div><div class="kpi-value">${proxVencStr}</div></div></div>
-    </div>
-    <canvas id="grafico-deudas" height="120"></canvas>
-    <button id="add-deuda" class="btn">Añadir deuda</button>
-      <button id="sim-amort" class="btn">Simular amortización</button>
-      <button id="plan-pagos" class="btn">Planificador mensual</button>
-      <table class="tabla responsive-table"><thead><tr><th>Tipo</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
-      <div id="detalle-deuda"></div>
+      <h2>Préstamos</h2>
+      <form id="form-prestamo">
+        <input name="tin" type="number" step="any" placeholder="TIN %" required />
+        <button class="btn">Guardar</button>
+      </form>
+      <ul>${prestamos.map(p => `<li>${p.tin}%</li>`).join('')}</ul>
     </div>`;
   app.innerHTML = html;
-  renderGraficoComparativaDeudas();
-
-  document.getElementById('add-deuda').onclick = () => mostrarModalDeuda();
-  document.getElementById('sim-amort').onclick = () => mostrarModalSimularAmortizacion();
-  const planBtn = document.getElementById('plan-pagos');
-  if (planBtn) planBtn.onclick = () => { location.hash = '#planpagos'; };
-  document.querySelectorAll('.edit-deuda').forEach(b => b.onclick = async () => {
-    const d = await db.deudas.get(Number(b.dataset.id));
-    if (d) mostrarModalDeuda(d);
-  });
-  document.querySelectorAll('.del-deuda').forEach(b => b.onclick = () => {
-    const id = Number(b.dataset.id);
-    mostrarConfirmacion('¿Eliminar esta deuda?', async () => {
-      await db.movimientosDeuda.where('deudaId').equals(id).delete();
-      await db.deudaHistory.where('deudaId').equals(id).delete();
-      await borrarEntidad('deudas', id);
-      renderDeudas();
-    });
-  });
-  document.querySelectorAll('.ver-deuda').forEach(b => b.onclick = () => mostrarDetalleDeuda(Number(b.dataset.id)));
-  document.querySelectorAll('.tabla tbody tr').forEach(tr => {
-    tr.addEventListener('click', e => {
-      if (e.target.tagName !== 'BUTTON') mostrarDetalleDeuda(Number(tr.dataset.id));
-    });
-  });
+  document.getElementById('form-prestamo').onsubmit = e => {
+    e.preventDefault();
+    const tin = parseFloat(e.target.tin.value);
+    db.prestamos.add({ tin }).then(renderPrestamos);
+  };
 }
 
 function renderTiposCambio() {
@@ -1686,7 +786,6 @@ function renderTiposCambio() {
       <h2>Tipos de cambio</h2>
       <div class="mini-explica" id="last-update-tc">Última actualización: ${state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A'}</div>
       <button id="refresh-tc" class="btn">Refrescar tasas</button>
-      <button id="simulate-tc" class="btn">Actualizar tipos de cambio</button>
       <form id="form-cambio">
         <input name="moneda" placeholder="Moneda" required />
         <input name="tasa" type="number" step="any" placeholder="Tasa" required />
@@ -1710,102 +809,18 @@ function renderTiposCambio() {
       const data = await fetchExchangeRates('https://api.exchangerate.host/latest?base=EUR');
       if (data && data.rates) {
         const fecha = data.date || new Date().toISOString().slice(0,10);
-        const registros = [];
-        for (const [moneda, tasa] of Object.entries(data.rates)) {
-          const valor = parseFloat(tasa);
-          state.exchangeRates[moneda] = valor;
-          registros.push({ moneda, tasa: valor, fecha });
-        }
+        const registros = Object.entries(data.rates).map(([moneda, tasa]) => ({
+          moneda,
+          tasa: parseFloat(tasa),
+          fecha
+        }));
         await db.tiposCambio.bulkAdd(registros);
-        saveUserSetting('exchangeRates', state.exchangeRates);
         alert('Tasas actualizadas');
         renderTiposCambio();
       } else {
         alert('No se pudieron obtener las tasas');
       }
     };
-
-    document.getElementById('simulate-tc').onclick = async () => {
-      const base = { USD: 1.1, GBP: 0.85, JPY: 140 };
-      const fecha = new Date().toISOString().slice(0, 10);
-      const registros = [];
-      for (const [moneda, valor] of Object.entries(base)) {
-        const tasa = parseFloat((valor * (0.95 + Math.random() * 0.1)).toFixed(4));
-        state.exchangeRates[moneda] = tasa;
-        registros.push({ moneda, tasa, fecha });
-      }
-      state.settings.lastExchangeUpdate = new Date().toISOString();
-      await db.tiposCambio.bulkAdd(registros);
-      saveUserSetting('exchangeRates', state.exchangeRates);
-      alert('Tipos de cambio actualizados');
-      renderTiposCambio();
-    };
-  });
-}
-
-async function renderIngresos() {
-  const ingresos = await db.ingresos.toArray();
-  const filas = ingresos.map(i => `
-      <tr data-id="${i.id}">
-        <td data-label="Fecha">${i.fecha || ''}</td>
-        <td data-label="Importe">${formatCurrency(i.importe)}</td>
-        <td data-label="Tipo">${i.tipo || ''}</td>
-        <td data-label="Origen">${i.origen || ''}</td>
-        <td>
-          <button class="btn btn-small edit-ingreso" data-id="${i.id}">✏️</button>
-          <button class="btn btn-small del-ingreso" data-id="${i.id}">🗑️</button>
-        </td>
-      </tr>`).join('');
-  app.innerHTML = `
-    <div class="card">
-      <h2>Ingresos</h2>
-      <button id="add-ingreso" class="btn">Añadir ingreso</button>
-      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Origen</th><th></th></tr></thead><tbody>${filas}</tbody></table>
-    </div>`;
-  document.getElementById('add-ingreso').onclick = () => mostrarModalIngreso();
-  document.querySelectorAll('.edit-ingreso').forEach(b => b.onclick = async () => {
-    const ing = await db.ingresos.get(Number(b.dataset.id));
-    if (ing) mostrarModalIngreso(ing);
-  });
-  document.querySelectorAll('.del-ingreso').forEach(b => b.onclick = () => {
-    const id = Number(b.dataset.id);
-    mostrarConfirmacion('¿Eliminar este ingreso?', async () => {
-      await borrarEntidad('income', id);
-      renderIngresos();
-    });
-  });
-}
-
-async function renderGastos() {
-  const gastos = await db.gastos.toArray();
-  const filas = gastos.map(g => `
-      <tr data-id="${g.id}">
-        <td data-label="Fecha">${g.fecha || ''}</td>
-        <td data-label="Importe">${formatCurrency(g.importe)}</td>
-        <td data-label="Tipo">${g.tipo || ''}</td>
-        <td data-label="Categoría">${g.categoria || ''}</td>
-        <td>
-          <button class="btn btn-small edit-gasto" data-id="${g.id}">✏️</button>
-          <button class="btn btn-small del-gasto" data-id="${g.id}">🗑️</button>
-        </td>
-      </tr>`).join('');
-  app.innerHTML = `
-    <div class="card">
-      <h2>Gastos</h2>
-      <button id="add-gasto" class="btn">Añadir gasto</button>
-      <table class="responsive-table"><thead><tr><th>Fecha</th><th>Importe</th><th>Tipo</th><th>Categoría</th><th></th></tr></thead><tbody>${filas}</tbody></table>
-    </div>`;
-  document.getElementById('add-gasto').onclick = () => mostrarModalGasto();
-  document.querySelectorAll('.edit-gasto').forEach(b => b.onclick = async () => {
-    const g = await db.gastos.get(Number(b.dataset.id));
-    if (g) mostrarModalGasto(g);
-  });
-  document.querySelectorAll('.del-gasto').forEach(b => b.onclick = () => {
-    const id = Number(b.dataset.id);
-    mostrarConfirmacion('¿Eliminar este gasto?', async () => {
-      await borrarEntidad('expenses', id);
-      renderGastos();
-    });
   });
 }
 
@@ -1932,7 +947,8 @@ async function checkForUpdates() {
   }
 }
 function renderAjustes() {
-  const entidades = getEntidadesFinancieras();
+  const brokers = getBrokers();
+  const bancos = getBancos();
   const tema = getTema();
   const idioma = getIdioma();
   const privacidad = getPrivacidad();
@@ -1979,8 +995,12 @@ function renderAjustes() {
           <input id="api-key-av" type="text" value="${apiKey}">
         </div>
         <div class="form-group">
-          <label for="entidades-list">Entidades financieras</label>
-          <textarea id="entidades-list" rows="4">${entidades.join('\n')}</textarea>
+          <label for="brokers-list">Brokers</label>
+          <textarea id="brokers-list" rows="3">${brokers.join('\n')}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="banks-list">Bancos</label>
+          <textarea id="banks-list" rows="3">${bancos.join('\n')}</textarea>
         </div>
         <div class="form-group">
           <label><input type="checkbox" id="chk-privacidad" ${privacidad ? 'checked' : ''}/> Modo privacidad</label>
@@ -1989,17 +1009,8 @@ function renderAjustes() {
         <div id="ajustes-msg" class="form-msg"></div>
       </form>
       <section>
-        <h3>Gestión de Datos</h3>
-        <p>
-          <button id="btn-exp-json" class="btn">Exportar datos (JSON)</button>
-          <input type="file" id="inp-json" accept="application/json" hidden>
-          <button id="btn-imp-json" class="btn">Importar datos (JSON)</button>
-        </p>
-        <p>
-          <button id="btn-exp-trans" class="btn">Exportar CSV de transacciones</button>
-          <input type="file" id="inp-trans-csv" accept=".csv" hidden>
-          <button id="btn-imp-trans" class="btn">Importar CSV de transacciones</button>
-        </p>
+        <h3>Exportar datos</h3>
+        <button id="btn-exportar-datos" class="btn">Exportar Backup</button>
       </section>
     </div>`;
 
@@ -2030,10 +1041,8 @@ function renderAjustes() {
         setSavebackRate(saveVal),
         setTipoCambio(tcVal),
         setApiKeyAv(document.getElementById('api-key-av').value.trim()),
-        setEntidadesFinancieras(
-          document.getElementById('entidades-list').value
-            .split('\n').map(s => s.trim()).filter(Boolean)
-        ),
+        setBrokers(document.getElementById('brokers-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
+        setBancos(document.getElementById('banks-list').value.split('\n').map(s => s.trim()).filter(Boolean)),
         setPrivacidad(document.getElementById('chk-privacidad').checked)
       ]);
       msg.textContent = 'Ajustes guardados correctamente';
@@ -2044,31 +1053,21 @@ function renderAjustes() {
     }
   });
 
-  const btnExpJ = document.getElementById('btn-exp-json');
-  const btnImpJ = document.getElementById('btn-imp-json');
-  const inpJ = document.getElementById('inp-json');
-  const btnExpTrans = document.getElementById('btn-exp-trans');
-  const btnImpTrans = document.getElementById('btn-imp-trans');
-  const inpTrans = document.getElementById('inp-trans-csv');
-  if (btnExpJ) btnExpJ.onclick = exportarJSON;
-  if (btnImpJ) btnImpJ.onclick = () => inpJ.click();
-  if (inpJ) inpJ.onchange = () => {
-    if (inpJ.files[0]) importarJSON(inpJ.files[0]);
-    inpJ.value = '';
-  };
-  if (btnExpTrans) btnExpTrans.onclick = () => exportarCSVTipo('transactions');
-  if (btnImpTrans) btnImpTrans.onclick = () => inpTrans.click();
-  if (inpTrans) inpTrans.onchange = () => {
-    if (inpTrans.files[0]) importarCSV(inpTrans.files[0], 'transactions');
-    inpTrans.value = '';
-  };
+  const btnExp = document.getElementById('btn-exportar-datos');
+  if (btnExp) btnExp.onclick = exportarBackup;
 }
 
 async function renderInfo() {
-  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div><div id="info-debug"></div>`;
+  app.innerHTML = `<div class="card"><h2>Información</h2><div id="info-cont">Cargando...</div></div>`;
   try {
-    const el = document.getElementById('version-data');
-    const local = el ? JSON.parse(el.textContent) : {};
+    let local;
+    try {
+      const localResp = await fetch('version.json', { cache: 'no-store' });
+      local = await localResp.json();
+    } catch {
+      const el = document.getElementById('version-data');
+      local = el ? JSON.parse(el.textContent) : {};
+    }
     const fecha = local.date || '';
     const instalada = local.version || '';
     try {
@@ -2100,44 +1099,6 @@ async function renderInfo() {
     } catch {
     document.getElementById('info-cont').textContent = 'No disponible';
   }
-  const dbg = document.getElementById('info-debug');
-  if (dbg) dbg.innerHTML = await getDebugHtml();
-}
-
-function renderGlosario() {
-  const defs = {
-    'P&L':'Beneficio o pérdida. Diferencia entre valor actual y coste total.',
-    'TIN':'Tipo de interés nominal.',
-    'APY':'Rentabilidad anual equivalente.',
-    'ROI':'Retorno de la inversión.',
-    'TAE':'Tasa anual equivalente.',
-    'Saveback':'Ahorro destinado a amortizar deudas o invertir.'
-  };
-  const lista = Object.entries(defs)
-    .map(([t,d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('');
-  app.innerHTML = `<div class="card"><h2>Glosario financiero</h2><dl>${lista}</dl></div>`;
-}
-
-async function getDebugHtml() {
-  if (!appState) await cargarEstado();
-  const size = JSON.stringify(appState).length;
-  const assets = appState.assets.length;
-  const trans = appState.transactions.length;
-  const lastTc = state.settings.lastExchangeUpdate ? new Date(state.settings.lastExchangeUpdate).toLocaleString() : 'N/A';
-  const lastHist = appState.portfolioHistory.slice(-1)[0]?.fecha || 'N/A';
-  return `
-    <div class="card">
-      <h3>Debug</h3>
-      <p>Tamaño del state: ${size} bytes</p>
-      <p>Activos registrados: ${assets}</p>
-      <p>Transacciones registradas: ${trans}</p>
-      <p>Última actualización de TC: ${lastTc}</p>
-      <p>Último histórico de cartera: ${lastHist}</p>
-    </div>`;
-}
-
-async function renderDebug() {
-  app.innerHTML = await getDebugHtml();
 }
 
 // --------- Gráficos Dashboard ---------
@@ -2175,7 +1136,7 @@ async function calcularPnLPorActivo() {
 async function datosSavebackTin() {
   const [movs, prestamos] = await Promise.all([
     db.movimientos.where('tipo').equals('saveback').toArray(),
-    db.deudas.toArray()
+    db.prestamos.toArray()
   ]);
   const porMes = {};
   movs.forEach(m => {
@@ -2184,7 +1145,7 @@ async function datosSavebackTin() {
   });
   const labels = Object.keys(porMes).sort();
   const saveData = labels.map(l => porMes[l]);
-  const tin = prestamos[0]?.tipoInteres || prestamos[0]?.tin || 0;
+  const tin = prestamos[0]?.tin || 0;
   const tinData = labels.map(() => tin);
   return { labels, saveData, tinData };
 }
@@ -2216,13 +1177,6 @@ async function datosAsignacion() {
 }
 
 async function datosEvolucionCartera() {
-  const hist = await db.portfolioHistory.orderBy('fecha').toArray();
-  if (hist.length) {
-    return {
-      labels: hist.map(h=>h.fecha),
-      data: hist.map(h=>h.valorTotal)
-    };
-  }
   const trans = await db.transacciones.toArray();
   if (!trans.length) return { labels: [], data: [] };
   trans.sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
@@ -2240,50 +1194,6 @@ async function datosEvolucionCartera() {
     data.push(total);
   }
   return { labels, data };
-}
-
-async function datosHistorialPatrimonio(rangoDias) {
-  if (!state.historialPatrimonio.length) {
-    state.historialPatrimonio = await db.historialPatrimonio.orderBy('fecha').toArray();
-  }
-  let hist = [...state.historialPatrimonio];
-  hist.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
-  if (rangoDias) {
-    const limite = new Date();
-    limite.setDate(limite.getDate() - rangoDias);
-    const f = limite.toISOString().slice(0,10);
-    hist = hist.filter(h=>h.fecha >= f);
-  }
-  return {
-    labels: hist.map(h=>h.fecha),
-    neto: hist.map(h=>h.patrimonioNeto),
-    activos: hist.map(h=>h.activos),
-    cuentas: hist.map(h=>h.cuentas),
-    deudas: hist.map(h=>h.deudas)
-  };
-}
-
-async function renderGraficoHistorialPatrimonio() {
-  if (!hasChart) return;
-  const sel = document.getElementById('filtro-hpat');
-  const rango = sel && sel.value ? parseInt(sel.value) : null;
-  const datos = await datosHistorialPatrimonio(rango);
-  const ctxEl = document.getElementById('grafico-hist-patrimonio');
-  if (!ctxEl) return;
-  if (ctxEl.chart) ctxEl.chart.destroy();
-  ctxEl.chart = new Chart(ctxEl.getContext('2d'), {
-    type:'line',
-    data:{
-      labels:datos.labels,
-      datasets:[
-        {label:'Patrimonio neto', data:datos.neto, borderColor:'#2e7d32', tension:0.2},
-        {label:'Activos', data:datos.activos, borderColor:'#3498db', tension:0.2},
-        {label:'Cuentas', data:datos.cuentas, borderColor:'#3f8edc', tension:0.2},
-        {label:'Deudas', data:datos.deudas.map(d=>-d), borderColor:'#e57373', tension:0.2}
-      ]
-    },
-    options:{responsive:true}
-  });
 }
 
 async function renderGraficosDashboard() {
@@ -2333,10 +1243,6 @@ async function renderGraficosDashboard() {
   const ctxTipo = document.getElementById('grafico-tipo').getContext('2d');
   new Chart(ctxTipo, {type:'doughnut', data:{labels:tipo.labels, datasets:[{data:tipo.data}]}, options:{responsive:true}});
 
-  const pat = await calcularPatrimonioNeto();
-  const ctxPat = document.getElementById('grafico-patrimonio').getContext('2d');
-  new Chart(ctxPat, {type:'bar', data:{labels:['Activos','Cuenta','Deudas','Neto'], datasets:[{data:[pat.valorActivos, pat.saldoCuentas, -pat.deudaPendiente, pat.patrimonioNeto], backgroundColor:['#3498db','#3f8edc','#e57373','#2e7d32']}]}, options:{responsive:true, plugins:{legend:{display:false}}}});
-
   const evo = await datosEvolucionCartera();
   const ctxE = document.getElementById('grafico-evolucion').getContext('2d');
   new Chart(ctxE, {type:'line', data:{labels:evo.labels, datasets:[{label:'Valor total',data:evo.data,borderColor:'#3498db',tension:0.2}]}, options:{responsive:true}});
@@ -2348,16 +1254,11 @@ async function renderGraficosDashboard() {
 // Exportar CSV
 function exportarCSV(array, filename) {
   if (!array.length) return alert("No hay datos.");
-  let csv;
-  if (typeof Papa !== 'undefined') {
-    csv = Papa.unparse(array);
-  } else {
-    const encabezados = Object.keys(array[0]);
-    csv = [
-      encabezados.join(";"),
-      ...array.map(row => encabezados.map(k => JSON.stringify(row[k] ?? "")).join(";"))
-    ].join("\n");
-  }
+  const encabezados = Object.keys(array[0]);
+  const csv = [
+    encabezados.join(";"),
+    ...array.map(row => encabezados.map(k => JSON.stringify(row[k] ?? "")).join(";"))
+  ].join("\\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2366,167 +1267,21 @@ function exportarCSV(array, filename) {
 }
 
 function parseCSV(text) {
-  if (typeof Papa !== 'undefined') {
-    const res = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
-    return Array.isArray(res.data) ? res.data : [];
-  }
   const rows = text.trim().split(/\r?\n/);
   if (!rows.length) return [];
   const headers = rows.shift().split(/[,;]\s*/).map(h => h.trim());
   return rows.filter(Boolean).map(line => {
     const cols = line.split(/[,;]\s*/);
     const obj = {};
-    headers.forEach((h, i) => (obj[h] = (cols[i] || '').trim()));
+    headers.forEach((h,i)=> obj[h] = (cols[i] || '').trim());
     return obj;
   });
 }
 
-async function exportarJSON() {
-  if (!appState) await cargarEstado();
-  const filename = `cartera-pro-datos-${new Date().toISOString().slice(0,10)}.json`;
-  const blob = new Blob([JSON.stringify(appState)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-
-async function importarJSON(file) {
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if (!data || typeof data !== 'object') {
-      alert('Archivo inválido');
-      return false;
-    }
-    if (data.deudaMovimientos && !data.movimientosDeuda) {
-      data.movimientosDeuda = data.deudaMovimientos;
-    }
-    if (data.prestamos && !data.deudas) {
-      data.deudas = data.prestamos;
-    }
-    if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
-        !data.settings || !Array.isArray(data.deudas) ||
-        !Array.isArray(data.movimientosDeuda) ||
-        !Array.isArray(data.deudaHistory) ||
-        !Array.isArray(data.historialPatrimonio)) {
-      alert('Archivo incompleto');
-      return false;
-    }
-    for (const name of STORE_NAMES) {
-      if (Array.isArray(data[name])) {
-        await db[name].clear();
-        if (data[name].length) await db[name].bulkAdd(data[name]);
-      }
-    }
-    appState = JSON.parse(JSON.stringify(data));
-    alert('Datos importados');
-    return true;
-  } catch (e) {
-    alert('Error al importar: ' + e.message);
-    return false;
-  }
-}
-
-async function exportarCSVTipo(tipo) {
-  const datos = [];
-  if (tipo === 'transactions') {
-    const trans = appState ? appState.transactions : await db.transactions.toArray();
-    const assets = appState ? appState.assets : await db.assets.toArray();
-    const mapa = {};
-    assets.forEach(a => mapa[a.id] = a.ticker || '');
-    trans.forEach(t => datos.push({
-      assetId: t.activoId,
-      assetTicker: mapa[t.activoId] || '',
-      date: t.fecha,
-      type: t.tipo,
-      quantity: t.cantidad,
-      pricePerUnit: t.precio,
-      commission: t.comision,
-      broker: t.broker
-    }));
-    exportarCSV(datos, 'transacciones.csv');
-  } else if (tipo === 'accountMovements') {
-    const movs = appState ? appState.movimientos : await db.movimientos.toArray();
-    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
-    const mapa = {};
-    cuentas.forEach(c => mapa[c.id] = c.banco || '');
-    movs.forEach(m => datos.push({
-      date: m.fecha,
-      type: m.tipo,
-      bank: mapa[m.cuentaId] || '',
-      amount: m.importe,
-      notes: m.descripcion || m.notas || ''
-    }));
-    exportarCSV(datos, 'movimientos.csv');
-  }
-}
-
-async function importarCSV(file, tipo) {
-  const text = await file.text();
-  const rows = parseCSV(text);
-  if (!rows.length) return;
-  if (tipo === 'transactions') {
-    const assets = appState ? appState.assets : await db.assets.toArray();
-    const mapaTicker = {};
-    assets.forEach(a => mapaTicker[(a.ticker || '').toUpperCase()] = a.id);
-    for (const r of rows) {
-      if (!r.date && !r.fecha) continue;
-      const id = parseInt(r.id || r.ID);
-      if (id && await db.transactions.get(id)) continue;
-      let actId = parseInt(r.assetId || r.activoId || 0);
-      const tkr = (r.assetTicker || r.ticker || '').toUpperCase();
-      if (!actId && tkr) actId = mapaTicker[tkr];
-      if (!actId && tkr) {
-        actId = await db.assets.add({ nombre: tkr, ticker: tkr, tipo: '', moneda: 'EUR' });
-        mapaTicker[tkr] = actId;
-      }
-      if (!actId) continue;
-      const obj = {
-        activoId: actId,
-        fecha: r.date || r.fecha,
-        tipo: r.type || r.tipo,
-        cantidad: parseFloat(r.quantity || r.cantidad || 0),
-        precio: parseFloat(r.pricePerUnit || r.precio || 0),
-        comision: parseFloat(r.commission || r.comision || 0),
-        broker: r.broker || ''
-      };
-      await db.transactions.add(obj);
-    }
-  } else if (tipo === 'accountMovements') {
-    const cuentas = appState ? appState.cuentas : await db.cuentas.toArray();
-    const mapaBanco = {};
-    cuentas.forEach(c => mapaBanco[(c.banco || '').toUpperCase()] = c.id);
-    for (const r of rows) {
-      const id = parseInt(r.id || r.ID);
-      if (id && await db.movimientos.get(id)) continue;
-      let cId = mapaBanco[(r.bank || '').toUpperCase()];
-      if (!cId && r.bank) {
-        cId = await db.cuentas.add({ banco: r.bank, alias: r.bank, saldo: 0, tipo: 'corriente' });
-        mapaBanco[(r.bank || '').toUpperCase()] = cId;
-      }
-      if (!cId) continue;
-      const obj = {
-        fecha: r.date || r.fecha,
-        tipo: r.type || r.tipo,
-        cuentaId: cId,
-        importe: parseFloat(r.amount || r.importe || 0),
-        descripcion: r.notes || r.descripcion || ''
-      };
-      await db.movimientos.add(obj);
-    }
-  }
-  await cargarEstado();
-}
-
 async function exportarBackup() {
   const backup = {};
-  if (appState) {
-    Object.assign(backup, appState);
-  } else {
-    for (const tabla of db.tables) {
-      backup[tabla.name] = await tabla.toArray();
-    }
+  for (const tabla of db.tables) {
+    backup[tabla.name] = await tabla.toArray();
   }
   const filename = `CarteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
   const blob = new Blob([JSON.stringify(backup)], {
@@ -2554,7 +1309,6 @@ async function importarBackupDesdeArchivo(file) {
         }
       }
     }
-    appState = JSON.parse(JSON.stringify(data));
     alert('Copia restaurada correctamente');
     return true;
   } catch (e) {
@@ -2619,7 +1373,7 @@ function mostrarModalActualizacion(nuevaVersion) {
 async function proceedUpdate(nuevaVersion) {
   const modal = document.getElementById('update-modal');
   if (modal) modal.remove();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.getRegistration();
     if (reg) {
       await reg.update();
@@ -2675,7 +1429,7 @@ function mostrarModalEditarActivo(activo) {
     const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
     const id = Number(form.dataset.id);
-    await actualizarEntidad('assets', { ...data, id });
+    await db.activos.update(id, data);
     actualizarFilaActivo(id, data);
     modal.classList.add('hidden');
   };
@@ -2740,83 +1494,49 @@ function crearModalMovimiento() {
   document.body.appendChild(div);
 }
 
-async function mostrarModalMovimiento(cuentas, mov) {
+async function mostrarModalMovimiento(cuentas) {
   crearModalMovimiento();
   const modal = document.getElementById('mov-modal');
-  const form = document.getElementById('form-mov');
   const lista = document.getElementById('sel-cuenta');
   lista.innerHTML = cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
-
-  if (mov) {
-    modal.querySelector('h3').textContent = 'Editar movimiento';
-    form.cuentaId.value = mov.cuentaId;
-    form.fecha.value = mov.fecha || '';
-    form.importe.value = mov.importe;
-    form.tipo.value = mov.tipo;
-    form.descripcion.value = mov.descripcion || '';
-    form.dataset.id = mov.id;
-  } else {
-    modal.querySelector('h3').textContent = 'Nuevo movimiento';
-    form.reset();
-    form.dataset.id = '';
-  }
-
   modal.classList.remove('hidden');
 
   modal.querySelector('#cancel-mov').onclick = () => {
     modal.classList.add('hidden');
   };
 
-  form.onsubmit = async e => {
+  modal.querySelector('#form-mov').onsubmit = async e => {
     e.preventDefault();
-    const fd = new FormData(form);
+    const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
     data.cuentaId = parseInt(data.cuentaId);
     data.importe = parseFloat(data.importe);
+    const cuenta = await db.cuentas.get(data.cuentaId);
+    const mov = {
+      cuentaId: data.cuentaId,
+      fecha: data.fecha,
+      importe: data.importe,
+      descripcion: data.descripcion || '',
+      tipo: data.tipo
+    };
+    const id = await db.movimientos.add(mov);
+    mov.id = id;
+    state.accountMovements.push(mov);
+    await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
 
-    const id = form.dataset.id;
-    if (id) {
-      const anterior = await db.movimientos.get(Number(id));
-      await actualizarEntidad('movimientos', { ...data, id: Number(id) });
-      if (anterior) {
-        if (anterior.cuentaId === data.cuentaId) {
-          const c = await db.cuentas.get(data.cuentaId);
-          await db.cuentas.update(data.cuentaId, { saldo: (+c.saldo || 0) - anterior.importe + data.importe });
-        } else {
-          const cOld = await db.cuentas.get(anterior.cuentaId);
-          const cNew = await db.cuentas.get(data.cuentaId);
-          await db.cuentas.update(anterior.cuentaId, { saldo: (+cOld.saldo || 0) - anterior.importe });
-          await db.cuentas.update(data.cuentaId, { saldo: (+cNew.saldo || 0) + data.importe });
-        }
-      }
-    } else {
-      const cuenta = await db.cuentas.get(data.cuentaId);
-      const obj = {
+    if (data.tipo === 'Gasto Tarjeta') {
+      const porcentaje = getSavebackRate();
+      const importeSave = Math.abs(data.importe) * (porcentaje / 100);
+      const movSave = {
         cuentaId: data.cuentaId,
         fecha: data.fecha,
-        importe: data.importe,
-        descripcion: data.descripcion || '',
-        tipo: data.tipo
+        importe: importeSave,
+        descripcion: 'Saveback pendiente',
+        tipo: 'Saveback pendiente'
       };
-      const newId = await db.movimientos.add(obj);
-      obj.id = newId;
-      state.accountMovements.push(obj);
-      await db.cuentas.update(data.cuentaId, { saldo: (+cuenta.saldo || 0) + data.importe });
-
-      if (data.tipo === 'Gasto Tarjeta') {
-        const porcentaje = getSavebackRate();
-        const importeSave = Math.abs(data.importe) * (porcentaje / 100);
-        const movSave = {
-          cuentaId: data.cuentaId,
-          fecha: data.fecha,
-          importe: importeSave,
-          descripcion: 'Saveback pendiente',
-          tipo: 'Saveback pendiente'
-        };
-        const id2 = await db.movimientos.add(movSave);
-        movSave.id = id2;
-        state.accountMovements.push(movSave);
-      }
+      const id2 = await db.movimientos.add(movSave);
+      movSave.id = id2;
+      state.accountMovements.push(movSave);
     }
 
     modal.classList.add('hidden');
@@ -2848,8 +1568,8 @@ function crearModalTransaccion() {
         <button type="button" class="btn" id="btn-precio">📈 Obtener precio actual</button>
         <div id="currency-info" class="mini-explica"></div>
         <input type="number" step="any" name="comision" id="inp-comision" placeholder="Comisión" value="0" />
-        <input name="broker" id="inp-broker" list="lista-entidades" placeholder="Entidad" />
-        <datalist id="lista-entidades"></datalist>
+        <input name="broker" id="inp-broker" list="lista-brokers" placeholder="Broker" />
+        <datalist id="lista-brokers"></datalist>
         <div id="rate-info" class="mini-explica"></div>
         <div id="total-eur" class="mini-explica"></div>
         <button class="btn">Guardar</button>
@@ -2864,7 +1584,9 @@ async function mostrarModalTransaccion(activos, trans) {
   const modal = document.getElementById('transaction-modal');
   const lista = document.getElementById('sel-activo');
   lista.innerHTML = activos.map(a => `<option value="${a.id}" data-ticker="${a.ticker}" data-moneda="${a.moneda}" data-tipo="${a.tipo}">${a.nombre}</option>`).join('');
-  actualizarDatalistEntidades();
+  const brokers = getBrokers();
+  const dl = document.getElementById('lista-brokers');
+  dl.innerHTML = brokers.map(b => `<option value="${b}">`).join('');
   modal.classList.remove('hidden');
 
   const form = document.getElementById('form-transaccion');
@@ -2933,512 +1655,12 @@ async function mostrarModalTransaccion(activos, trans) {
     data.precio = parseFloat(data.precio);
     data.comision = parseFloat(data.comision) || 0;
     const id = form.dataset.id;
-    const prom = id ? actualizarEntidad('transactions', { ...data, id: Number(id) })
-                    : actualizarEntidad('transactions', data);
-  prom.then(() => {
+    const prom = id ? db.transacciones.update(Number(id), data) : db.transacciones.add(data);
+    prom.then(() => {
       modal.classList.add('hidden');
       renderTransacciones();
     });
   };
-}
-
-// ----- Modal Ingreso -----
-function crearModalIngreso() {
-  if (document.getElementById('ingreso-modal')) return;
-  const div = document.createElement('div');
-  div.id = 'ingreso-modal';
-  div.className = 'modal hidden';
-  div.innerHTML = `
-    <div class="modal-content">
-      <h3>Nuevo ingreso</h3>
-      <form id="form-ingreso">
-        <input type="date" name="fecha" required />
-        <input type="number" step="any" name="importe" placeholder="Importe" required />
-        <input name="tipo" placeholder="Tipo" />
-        <input name="origen" placeholder="Origen" />
-        <input name="notas" placeholder="Notas" />
-        <button class="btn">Guardar</button>
-        <button type="button" class="btn" id="cancel-ingreso">Cancelar</button>
-      </form>
-    </div>`;
-  document.body.appendChild(div);
-}
-
-function mostrarModalIngreso(ing) {
-  crearModalIngreso();
-  const modal = document.getElementById('ingreso-modal');
-  const form = document.getElementById('form-ingreso');
-  if (ing) {
-    modal.querySelector('h3').textContent = 'Editar ingreso';
-    form.fecha.value = ing.fecha || '';
-    form.importe.value = ing.importe;
-    form.tipo.value = ing.tipo || '';
-    form.origen.value = ing.origen || '';
-    form.notas.value = ing.notas || '';
-    form.dataset.id = ing.id;
-  } else {
-    modal.querySelector('h3').textContent = 'Nuevo ingreso';
-    form.reset();
-    form.dataset.id = '';
-  }
-  modal.classList.remove('hidden');
-  modal.querySelector('#cancel-ingreso').onclick = () => modal.classList.add('hidden');
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const data = Object.fromEntries(fd.entries());
-    data.importe = parseFloat(data.importe);
-    const id = form.dataset.id;
-    if (id) await actualizarEntidad('income', { ...data, id: Number(id) });
-    else await db.ingresos.add(data);
-    modal.classList.add('hidden');
-    if (location.hash === '#transacciones') renderTransacciones();
-    else renderIngresos();
-  };
-}
-
-// ----- Modal Gasto -----
-function crearModalGasto() {
-  if (document.getElementById('gasto-modal')) return;
-  const div = document.createElement('div');
-  div.id = 'gasto-modal';
-  div.className = 'modal hidden';
-  div.innerHTML = `
-    <div class="modal-content">
-      <h3>Nuevo gasto</h3>
-      <form id="form-gasto">
-        <input type="date" name="fecha" required />
-        <input type="number" step="any" name="importe" placeholder="Importe" required />
-        <input name="tipo" placeholder="Tipo" />
-        <input name="categoria" placeholder="Categoría" />
-        <input name="descripcion" placeholder="Descripción" />
-        <input name="notas" placeholder="Notas" />
-        <button class="btn">Guardar</button>
-        <button type="button" class="btn" id="cancel-gasto">Cancelar</button>
-      </form>
-    </div>`;
-  document.body.appendChild(div);
-}
-
-function mostrarModalGasto(g) {
-  crearModalGasto();
-  const modal = document.getElementById('gasto-modal');
-  const form = document.getElementById('form-gasto');
-  if (g) {
-    modal.querySelector('h3').textContent = 'Editar gasto';
-    form.fecha.value = g.fecha || '';
-    form.importe.value = g.importe;
-    form.tipo.value = g.tipo || '';
-    form.categoria.value = g.categoria || '';
-    form.descripcion.value = g.descripcion || '';
-    form.notas.value = g.notas || '';
-    form.dataset.id = g.id;
-  } else {
-    modal.querySelector('h3').textContent = 'Nuevo gasto';
-    form.reset();
-    form.dataset.id = '';
-  }
-  modal.classList.remove('hidden');
-  modal.querySelector('#cancel-gasto').onclick = () => modal.classList.add('hidden');
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const data = Object.fromEntries(fd.entries());
-    data.importe = parseFloat(data.importe);
-    const id = form.dataset.id;
-    if (id) await actualizarEntidad('expenses', { ...data, id: Number(id) });
-    else await db.gastos.add(data);
-    modal.classList.add('hidden');
-    if (location.hash === '#transacciones') renderTransacciones();
-    else renderGastos();
-  };
-}
-
-// ----- Modal Deuda -----
-function crearModalDeuda() {
-  if (document.getElementById('deuda-modal')) return;
-  const div = document.createElement('div');
-  div.id = 'deuda-modal';
-  div.className = 'modal hidden';
-  div.innerHTML = `
-    <div class="modal-content">
-      <h3>Nueva deuda</h3>
-      <form id="form-deuda">
-        <select name="tipo">
-          <option value="Préstamo personal">Préstamo personal</option>
-          <option value="Hipoteca">Hipoteca</option>
-        </select>
-        <input name="descripcion" placeholder="Descripción" required />
-        <input name="entidad" id="inp-entidad" list="lista-entidades" placeholder="Entidad" required />
-        <input type="date" name="fechaInicio" required />
-        <input type="date" name="fechaVencimiento" />
-        <input type="number" step="any" min="0" name="capitalInicial" placeholder="Capital inicial" required />
-        <input type="number" step="any" min="0" name="tipoInteres" placeholder="TIN %" required />
-        <label><input type="checkbox" name="interesFijo" /> Interés fijo</label>
-        <label><input type="checkbox" name="pagoAutomatico" /> Pago automático mensual</label>
-        <input name="inmuebleAsociado" placeholder="Inmueble (si hipoteca)" />
-        <textarea name="notas" placeholder="Notas"></textarea>
-        <button class="btn">Guardar</button>
-        <button type="button" class="btn" id="cancel-deuda">Cancelar</button>
-      </form>
-    </div>`;
-  document.body.appendChild(div);
-  if (!document.getElementById('lista-entidades')) {
-    const dl = document.createElement('datalist');
-    dl.id = 'lista-entidades';
-    document.body.appendChild(dl);
-  }
-}
-
-function mostrarModalDeuda(deuda) {
-  crearModalDeuda();
-  const modal = document.getElementById('deuda-modal');
-  const form = document.getElementById('form-deuda');
-  actualizarDatalistEntidades();
-  if (deuda) {
-    modal.querySelector('h3').textContent = 'Editar deuda';
-    Object.keys(deuda).forEach(k => {
-      if (form[k] !== undefined) form[k].value = deuda[k] || '';
-    });
-    form.interesFijo.checked = !!deuda.interesFijo;
-    form.pagoAutomatico.checked = !!deuda.pagoAutomatico;
-    form.dataset.id = deuda.id;
-  } else {
-    modal.querySelector('h3').textContent = 'Nueva deuda';
-    form.reset();
-    form.dataset.id = '';
-  }
-  modal.classList.remove('hidden');
-  modal.querySelector('#cancel-deuda').onclick = () => modal.classList.add('hidden');
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const data = Object.fromEntries(fd.entries());
-    data.capitalInicial = parseFloat(data.capitalInicial);
-    data.tipoInteres = parseFloat(data.tipoInteres);
-    data.interesFijo = form.interesFijo.checked;
-    data.pagoAutomatico = form.pagoAutomatico.checked;
-    const entidades = getEntidadesFinancieras();
-    if (!entidades.includes(data.entidad)) { alert('Selecciona una entidad válida'); return; }
-    if (isNaN(data.capitalInicial) || data.capitalInicial <= 0) { alert('Importe inválido'); return; }
-    if (isNaN(data.tipoInteres) || data.tipoInteres <= 0) { alert('TIN inválido'); return; }
-    if (data.fechaVencimiento && data.fechaVencimiento < data.fechaInicio) { alert('Fechas incoherentes'); return; }
-    const id = form.dataset.id;
-    if (id) await actualizarEntidad('deudas', { ...data, id: Number(id) });
-    else await db.deudas.add(data);
-    modal.classList.add('hidden');
-    renderDeudas();
-  };
-}
-
-function crearModalDeudaMovimiento() {
-  if (document.getElementById('deuda-mov-modal')) return;
-  const div = document.createElement('div');
-  div.id = 'deuda-mov-modal';
-  div.className = 'modal hidden';
-  div.innerHTML = `
-    <div class="modal-content">
-      <h3>Nuevo movimiento</h3>
-      <form id="form-deuda-mov">
-        <input type="hidden" name="deudaId" />
-        <input type="date" name="fecha" required />
-        <select name="tipoMovimiento">
-          <option value="Pago capital">Pago capital</option>
-          <option value="Pago interés">Pago interés</option>
-          <option value="Comisión">Comisión</option>
-          <option value="Cancelación anticipada">Cancelación anticipada</option>
-        </select>
-        <input type="number" step="any" name="importe" placeholder="Importe" required />
-        <input name="nota" placeholder="Nota" />
-        <button class="btn">Guardar</button>
-        <button type="button" class="btn" id="cancel-deuda-mov">Cancelar</button>
-      </form>
-    </div>`;
-  document.body.appendChild(div);
-}
-
-function mostrarModalDeudaMovimiento(deudaId, mov) {
-  crearModalDeudaMovimiento();
-  const modal = document.getElementById('deuda-mov-modal');
-  const form = document.getElementById('form-deuda-mov');
-  form.deudaId.value = deudaId;
-  if (mov) {
-    modal.querySelector('h3').textContent = 'Editar movimiento';
-    form.fecha.value = mov.fecha || '';
-    form.tipoMovimiento.value = mov.tipoMovimiento;
-    form.importe.value = mov.importe;
-    form.nota.value = mov.nota || '';
-    form.dataset.id = mov.id;
-  } else {
-    modal.querySelector('h3').textContent = 'Nuevo movimiento';
-    form.reset();
-    form.deudaId.value = deudaId;
-    form.dataset.id = '';
-  }
-  modal.classList.remove('hidden');
-  modal.querySelector('#cancel-deuda-mov').onclick = () => modal.classList.add('hidden');
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const data = Object.fromEntries(fd.entries());
-    data.deudaId = Number(data.deudaId);
-    data.importe = parseFloat(data.importe);
-    if (!data.fecha || isNaN(new Date(data.fecha).getTime())) { alert('Fecha inválida'); return; }
-    if (isNaN(data.importe) || data.importe <= 0) { alert('Importe inválido'); return; }
-    const id = form.dataset.id;
-    if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
-    else await db.movimientosDeuda.add(data);
-    if (data.tipoMovimiento === 'Pago capital' || data.tipoMovimiento === 'Cancelación anticipada') {
-      await registrarHistoricoDeuda(data.deudaId, data.fecha);
-    }
-    modal.classList.add('hidden');
-    mostrarDetalleDeuda(data.deudaId);
-    renderDeudas();
-  };
-}
-
-function crearModalSimularAmortizacion() {
-  if (document.getElementById('sim-amort-modal')) return;
-  const div = document.createElement('div');
-  div.id = 'sim-amort-modal';
-  div.className = 'modal hidden';
-  div.innerHTML = `
-    <div class="modal-content">
-      <h3>Simular amortización</h3>
-      <form id="form-sim-amort">
-        <input type="number" step="any" name="capital" placeholder="Capital" required />
-        <input type="number" step="any" name="tin" placeholder="TIN %" required />
-        <input type="number" step="any" name="plazo" placeholder="Plazo (años)" required />
-        <select name="frecuencia">
-          <option value="12">Mensual</option>
-          <option value="4">Trimestral</option>
-          <option value="1">Anual</option>
-        </select>
-        <button class="btn">Calcular</button>
-        <button type="button" class="btn" id="cancel-sim-amort">Cerrar</button>
-      </form>
-      <div id="sim-amort-res" class="mini-explica"></div>
-    </div>`;
-  document.body.appendChild(div);
-}
-
-function mostrarModalSimularAmortizacion(prefill) {
-  crearModalSimularAmortizacion();
-  const modal = document.getElementById('sim-amort-modal');
-  const form = document.getElementById('form-sim-amort');
-  const res = document.getElementById('sim-amort-res');
-  form.reset();
-  if (prefill) {
-    form.capital.value = prefill.capital || '';
-    form.tin.value = prefill.tin || '';
-    form.plazo.value = prefill.plazo || '';
-    form.frecuencia.value = prefill.frecuencia || '12';
-  }
-  modal.classList.remove('hidden');
-  modal.querySelector('#cancel-sim-amort').onclick = () => {
-    modal.classList.add('hidden');
-    res.textContent = '';
-  };
-  form.onsubmit = e => {
-    e.preventDefault();
-    const capital = parseFloat(form.capital.value);
-    const tin = parseFloat(form.tin.value) / 100;
-    const plazo = parseFloat(form.plazo.value);
-    const freq = parseInt(form.frecuencia.value);
-    const n = plazo * freq;
-    const i = tin / freq;
-    const cuota = capital * i / (1 - Math.pow(1 + i, -n));
-    const totalPagado = cuota * n;
-    const totalInteres = totalPagado - capital;
-    const interes1 = capital * i;
-    const capital1 = cuota - interes1;
-    res.innerHTML =
-      `Cuota: ${formatCurrency(cuota)} · Interés total: ${formatCurrency(totalInteres)}<br>Primer pago → Interés: ${formatCurrency(interes1)}, Capital: ${formatCurrency(capital1)}`;
-  };
-}
-
-function diffMeses(a, b) {
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
-}
-
-function diffDias(a, b) {
-  return Math.ceil((b - a) / 86400000);
-}
-
-async function calcularSaldoPendiente(id) {
-  const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
-  if (!deuda) return 0;
-  const movs = await db.movimientosDeuda.where('deudaId').equals(deuda.id).toArray();
-  const pagos = movs
-    .filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
-    .reduce((s, m) => s + (+m.importe || 0), 0);
-  return (+deuda.capitalInicial || 0) - pagos;
-}
-
-async function calcularAmortizacionDeuda(id) {
-  const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
-  if (!deuda) return null;
-  const movs = await db.movimientosDeuda.where('deudaId').equals(deuda.id).toArray();
-  const amortizado = movs.filter(m => m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada')
-    .reduce((s,m)=>s+(+m.importe||0),0);
-  const pagosRealizados = movs.filter(m => m.tipoMovimiento === 'Pago capital').length;
-  const pendiente = (+deuda.capitalInicial || 0) - amortizado;
-  const totalMeses = deuda.fechaInicio && deuda.fechaVencimiento ?
-      diffMeses(new Date(deuda.fechaInicio), new Date(deuda.fechaVencimiento)) : 1;
-  const mesesRestantes = Math.max(1, totalMeses - pagosRealizados);
-  const i = (parseFloat(deuda.tipoInteres || deuda.tin || 0) / 100) / 12;
-  const cuota = pendiente * i / (1 - Math.pow(1 + i, -mesesRestantes));
-  const interes = pendiente * i;
-  const capital = cuota - interes;
-  return { cuota, interes, capital, mesesRestantes, capitalPendiente: pendiente };
-}
-
-async function registrarCuotaAutomatica(id, fecha) {
-  const info = await calcularAmortizacionDeuda(id);
-  if (!info) return;
-  const f = fecha || new Date().toISOString().slice(0,10);
-  await db.movimientosDeuda.bulkAdd([
-    { deudaId: id, fecha: f, tipoMovimiento: 'Pago interés', importe: parseFloat(info.interes.toFixed(2)) },
-    { deudaId: id, fecha: f, tipoMovimiento: 'Pago capital', importe: parseFloat(info.capital.toFixed(2)) }
-  ]);
-  await registrarHistoricoDeuda(id, f);
-}
-
-async function procesarPagosAutomaticos() {
-  const [deudas, movs] = await Promise.all([
-    db.deudas.where('pagoAutomatico').equals(1).toArray(),
-    db.movimientosDeuda.toArray()
-  ]);
-  const hoy = new Date();
-  for (const d of deudas) {
-    const lista = movs
-      .filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'))
-      .sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
-    let fecha = lista[0] ? new Date(lista[0].fecha) : new Date(d.fechaInicio || hoy);
-    if (isNaN(fecha)) fecha = hoy;
-    fecha.setMonth(fecha.getMonth() + 1);
-    while (fecha <= hoy) {
-      const fstr = fecha.toISOString().slice(0,10);
-      const existe = movs.some(m => m.deudaId === d.id && m.fecha === fstr && (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Pago interés'));
-      if (!existe) {
-        await registrarCuotaAutomatica(d.id, fstr);
-        movs.push({ deudaId: d.id, fecha: fstr, tipoMovimiento: 'Pago capital' });
-      }
-      fecha.setMonth(fecha.getMonth() + 1);
-      if (d.fechaVencimiento && new Date(d.fechaVencimiento) < fecha) break;
-    }
-  }
-}
-
-async function mostrarDetalleDeuda(id) {
-  const cont = document.getElementById('detalle-deuda');
-  const deuda = await db.deudas.get(id);
-  const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
-  const saldo = await calcularSaldoPendiente(deuda);
-  let resumen = `<p><strong>${deuda.descripcion}</strong> (${deuda.tipo || ''})<br>
-    Entidad: ${deuda.entidad || ''} · Capital inicial: ${formatCurrency(deuda.capitalInicial)} · Saldo pendiente: ${formatCurrency(saldo)} · Interés: ${(deuda.tipoInteres || deuda.tin || 0)}% · Vencimiento: ${deuda.fechaVencimiento || ''}</p>`;
-  const prioridades = await prioridadAmortizacionDeudas();
-  const top = new Set(prioridades.slice(0,3).map(p=>p.id));
-  if (top.has(deuda.id)) {
-    resumen += ' <span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>';
-  }
-  if (deuda.tipo === 'Hipoteca' && deuda.inmuebleAsociado) {
-    const bienId = Number(deuda.inmuebleAsociado);
-    const bien = await db.bienes.get(bienId);
-    if (bien) resumen += `<p>Valor inmueble: ${formatCurrency(bien.valorActual || bien.valorCompra)}</p>`;
-  }
-  const tinCuenta = state.interestRates[state.interestRates.length-1]?.tin || 0;
-  const tinDeuda = parseFloat(deuda.tipoInteres || deuda.tin || deuda.tae || 0);
-  if (saldo > 0 && tinDeuda > tinCuenta) {
-    resumen += `<div class="alert pendiente">💡 Tu cuenta remunera al ${tinCuenta}% pero estás pagando un ${tinDeuda}% por tu deuda ${deuda.descripcion}. Podrías amortizar para ahorrar intereses.</div>`;
-  }
-  resumen += `<p>Pago automático: ${deuda.pagoAutomatico ? 'Sí' : 'No'} <button id="toggle-auto" class="btn btn-small">${deuda.pagoAutomatico ? 'Desactivar' : 'Activar'}</button></p>`;
-  const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
-  cont.innerHTML = `<section class="detalle">
-      ${resumen}
-      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th class="col-ocultar">Nota</th><th></th></tr></thead><tbody>${filas}</tbody></table>
-      <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
-      <button class="btn" id="reg-cuota">Registrar cuota</button>
-      <button class="btn" id="sim-cuota">Simular cuota</button>
-      <canvas id="grafico-saldo-deuda" height="120"></canvas>
-    </section>`;
-  document.getElementById('add-mov-deuda').onclick = () => mostrarModalDeudaMovimiento(id);
-  document.getElementById('reg-cuota').onclick = async () => {
-    const fecha = prompt('Fecha', new Date().toISOString().slice(0,10));
-    if (!fecha) return;
-    await registrarCuotaAutomatica(id, fecha);
-    mostrarDetalleDeuda(id);
-    renderDeudas();
-  };
-  document.getElementById('sim-cuota').onclick = () => {
-    const plazoMeses = deuda.fechaInicio && deuda.fechaVencimiento ? diffMeses(new Date(deuda.fechaInicio), new Date(deuda.fechaVencimiento)) : 12;
-    mostrarModalSimularAmortizacion({
-      capital: saldo,
-      tin: deuda.tipoInteres || deuda.tin || 0,
-      plazo: (plazoMeses / 12),
-      frecuencia: 12
-    });
-  };
-  document.getElementById('toggle-auto').onclick = async () => {
-    deuda.pagoAutomatico = !deuda.pagoAutomatico;
-    await actualizarEntidad('deudas', deuda);
-    mostrarDetalleDeuda(id);
-    renderDeudas();
-  };
-  cont.querySelectorAll('.edit-dmov').forEach(b => b.onclick = async () => {
-    const mv = await db.movimientosDeuda.get(Number(b.dataset.id));
-    if (mv) mostrarModalDeudaMovimiento(id, mv);
-  });
-  cont.querySelectorAll('.del-dmov').forEach(b => b.onclick = () => {
-    const movId = Number(b.dataset.id);
-    mostrarConfirmacion('¿Borrar movimiento?', async () => {
-      await borrarEntidad('movimientosDeuda', movId);
-      mostrarDetalleDeuda(id);
-      renderDeudas();
-    });
-  });
-  renderGraficoHistorialDeuda(id);
-}
-
-async function mostrarDetalleActivo(id) {
-  const appMain = document.getElementById('app');
-  const cont = document.getElementById('detalle-activo');
-  const act = await db.activos.get(id);
-  if (!act) return;
-  const trans = await db.transacciones.where('activoId').equals(id).toArray();
-  const ingresos = await db.ingresos.where('activoId').equals(id).toArray();
-  trans.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
-  const filasT = trans.map(t=>`<tr><td>${t.fecha}</td><td>${t.tipo}</td><td>${t.cantidad}</td><td>${t.precio}</td></tr>`).join('');
-  const filasI = ingresos.map(i=>`<tr><td>${i.fecha}</td><td>${i.tipo}</td><td>${formatCurrency(i.importe)}</td></tr>`).join('');
-  cont.innerHTML = `<div class="card"><h2>${act.nombre}</h2>
-    <section class="detalle">
-      <h3>Transacciones</h3>
-      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${filasT}</tbody></table>
-      <h3>Ingresos</h3>
-      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th></tr></thead><tbody>${filasI}</tbody></table>
-      <canvas id="grafico-detalle-activo" height="120"></canvas>
-      <button class="btn" id="volver-activos">Volver</button>
-    </section></div>`;
-  appMain.style.display = 'none';
-  cont.style.display = 'block';
-  document.getElementById('volver-activos').onclick = () => {
-    cont.innerHTML = '';
-    cont.style.display = 'none';
-    appMain.style.display = '';
-    renderActivos();
-  };
-  if (hasChart && trans.length) {
-    const ctx = document.getElementById('grafico-detalle-activo').getContext('2d');
-    let qty = 0;
-    const labels = [];
-    const datos = [];
-    for (const t of trans) {
-      qty += (t.tipo.toLowerCase() === 'compra' ? +t.cantidad : -t.cantidad);
-      labels.push(t.fecha);
-      datos.push(qty);
-    }
-    new Chart(ctx, {type:'line', data:{labels,datasets:[{data:datos, borderColor:'#3f8edc', fill:false}]}, options:{plugins:{legend:{display:false}}}});
-  }
 }
 
 // ----- Modal Análisis Value -----
@@ -3698,57 +1920,18 @@ async function obtenerTipoCambio(moneda) {
   return getTipoCambio();
 }
 
-function scheduleAutoBackup() {
-  setInterval(async () => {
-    if (!appState) await cargarEstado();
-    const fecha = new Date().toISOString();
-    try {
-      await db.backups.add({ fecha, data: JSON.stringify(appState) });
-      const all = await db.backups.orderBy('fecha').toArray();
-      if (all.length > 5) await db.backups.delete(all[0].id);
-    } catch {}
-  }, 6 * 60 * 60 * 1000);
-}
-
-function initDragAndDrop() {
-  document.addEventListener('dragover', e => e.preventDefault());
-  document.addEventListener('drop', e => {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (!f) return;
-    if (f.name.toLowerCase().endsWith('.json')) {
-      if (confirm('Importar datos desde JSON?')) importarJSON(f);
-    } else if (f.name.toLowerCase().endsWith('.csv')) {
-      const tipo = prompt('Tipo de CSV (transactions/accountMovements)', 'transactions');
-      if (tipo) importarCSV(f, tipo);
-    }
-  });
-}
-
 window.addEventListener("DOMContentLoaded", async () => {
-   // Inicia el router y escucha los cambios de hash
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
+  }
   await initAjustes();
-  await cargarEstado();
-  state.exchangeRates = getUserSetting('exchangeRates') || {};
   state.accountMovements = await db.movimientos.toArray();
   state.interestRates = await db.interestRates.toArray();
-  state.portfolioHistory = await db.portfolioHistory.toArray();
-  state.deudas = await db.deudas.toArray();
-  state.movimientosDeuda = await db.movimientosDeuda.toArray();
-  state.deudaHistory = await db.deudaHistory.toArray();
-  state.historialPatrimonio = await db.historialPatrimonio.toArray();
-  await procesarPagosAutomaticos();
   document.body.setAttribute('data-theme', getTema());
-  initDragAndDrop();
-  registrarHistoricoCartera();
-  registrarHistorialPatrimonio();
-  scheduleAutoBackup();
+  navegar();
+  window.addEventListener("hashchange", navegar);
   if (localStorage.getItem('backupPendienteImportar')) {
     mostrarModalImportarBackup();
   }
   checkForUpdates();
-
-  // ESTA ES LA CLAVE:
-  router();
-  window.addEventListener("hashchange", router);
 });
