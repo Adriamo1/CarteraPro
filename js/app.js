@@ -42,18 +42,42 @@ db.version(2).stores({
   settings: "clave, valor",
   backups: "++id, fecha"
 });
+db.version(3).stores({
+  assets: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
+  transactions: "++id, fecha, tipo, activoId, cantidad, precio, comision, broker, cambio, notas",
+  movimientos: "++id, fecha, tipo, cuentaId, importe, descripcion, saveback, categoria, notas",
+  cuentas: "++id, banco, iban, alias, saldo, tipo, principal, notas",
+  tarjetas: "++id, cuentaId, numero, tipo, saldo, limite, vencimiento, notas",
+  expenses: "++id, fecha, importe, tipo, categoria, descripcion, cuentaId, bienId, notas",
+  income: "++id, fecha, importe, tipo, origen, cuentaId, bienId, activoId, notas",
+  suscripciones: "++id, nombre, importe, periodicidad, proximoPago, cuentaId, tarjetaId, bienId, activoId, categoria, notas",
+  bienes: "++id, descripcion, tipo, valorCompra, valorActual, direccion, propietario, notas",
+  deudas: "++id, tipo, descripcion, entidad, fechaInicio, fechaVencimiento, capitalInicial, tipoInteres, interesFijo, inmuebleAsociado, notas",
+  deudaMovimientos: "++id, deudaId, fecha, tipoMovimiento, importe, nota",
+  seguros: "++id, bienId, tipo, prima, inicio, vencimiento, notas",
+  historico: "fecha, valorTotal, saldoCuentas, saveback, resumenPorActivo, resumenPorBien, tiposCambio",
+  carteras: "++id, nombre, descripcion, propietario, activos",
+  documentos: "++id, entidad, entidadId, tipo, url, descripcion, fecha",
+  logs: "++id, fecha, accion, entidad, entidadId, usuario, descripcion",
+  exchangeRates: "++id, moneda, tasa, fecha",
+  interestRates: "++id, fecha, tin",
+  settings: "clave, valor",
+  backups: "++id, fecha",
+  prestamos: null
+}).upgrade(tx => tx.table('prestamos').toArray(p => tx.table('deudas').bulkAdd(p)));
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
 db.ingresos = db.income;
 db.tiposCambio = db.exchangeRates;
 db.ajustes = db.settings;
+db.prestamos = db.deudas;
 // Para compatibilidad con versiones anteriores
 window.db = db;
 
 const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
-  'expenses', 'income', 'suscripciones', 'bienes', 'prestamos', 'seguros',
+  'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'deudaMovimientos', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
   'interestRates', 'settings', 'backups'
 ];
@@ -275,7 +299,7 @@ const vistas = {
   "#activos": renderActivos,
   "#transacciones": renderTransacciones,
   "#cuentas": renderCuentas,
-  "#prestamos": renderPrestamos,
+  "#deudas": renderDeudas,
   "#tiposcambio": renderTiposCambio,
   "#analisisvalue": renderAnalisisValue,
   "#info": renderInfo,
@@ -895,22 +919,57 @@ async function renderCuentas() {
   };
 }
 
-async function renderPrestamos() {
-  const prestamos = await db.prestamos.toArray();
+async function renderDeudas() {
+  const deudas = await db.deudas.toArray();
+  const movs = await db.deudaMovimientos.toArray();
+  let totalSaldo = 0, totalIntereses = 0;
+  const filas = await Promise.all(deudas.map(async d => {
+    const pagos = movs.filter(m => m.deudaId === d.id && m.tipoMovimiento === 'Pago capital')
+      .reduce((s, m) => s + (+m.importe || 0), 0);
+    const intereses = movs.filter(m => m.deudaId === d.id && (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión'))
+      .reduce((s,m)=>s+(+m.importe||0),0);
+    const saldo = (+d.capitalInicial || 0) - pagos;
+    totalSaldo += saldo;
+    totalIntereses += intereses;
+    const vencida = d.fechaVencimiento && new Date(d.fechaVencimiento) < new Date() && saldo > 0;
+    return `<tr data-id="${d.id}">
+      <td>${d.descripcion || ''}</td>
+      <td>${d.entidad || ''}</td>
+      <td>${formatCurrency(d.capitalInicial)}</td>
+      <td>${formatCurrency(saldo)}</td>
+      <td>${d.tipoInteres || d.tin || 0}%</td>
+      <td>${d.fechaVencimiento || ''} ${vencida ? '⚠️' : ''}</td>
+      <td>
+        <button class="btn btn-small ver-deuda" data-id="${d.id}">Ver</button>
+        <button class="btn btn-small edit-deuda" data-id="${d.id}">✏️</button>
+        <button class="btn btn-small del-deuda" data-id="${d.id}">🗑️</button>
+      </td>
+    </tr>`;
+  }));
+
   let html = `<div class="card">
-      <h2>Préstamos</h2>
-      <form id="form-prestamo">
-        <input name="tin" type="number" step="any" placeholder="TIN %" required />
-        <button class="btn">Guardar</button>
-      </form>
-      <ul>${prestamos.map(p => `<li>${p.tin}%</li>`).join('')}</ul>
+      <h2>Deudas</h2>
+      <div class="mini-explica">Saldo pendiente total: ${formatCurrency(totalSaldo)} | Intereses pagados: ${formatCurrency(totalIntereses)}</div>
+      <button id="add-deuda" class="btn">Añadir deuda</button>
+      <table class="tabla responsive-table"><thead><tr><th>Descripción</th><th>Entidad</th><th>Capital inicial</th><th>Saldo</th><th>TIN</th><th>Vencimiento</th><th></th></tr></thead><tbody>${filas.join('')}</tbody></table>
+      <div id="detalle-deuda"></div>
     </div>`;
   app.innerHTML = html;
-  document.getElementById('form-prestamo').onsubmit = e => {
-    e.preventDefault();
-    const tin = parseFloat(e.target.tin.value);
-    db.prestamos.add({ tin }).then(renderPrestamos);
-  };
+
+  document.getElementById('add-deuda').onclick = () => mostrarModalDeuda();
+  document.querySelectorAll('.edit-deuda').forEach(b => b.onclick = async () => {
+    const d = await db.deudas.get(Number(b.dataset.id));
+    if (d) mostrarModalDeuda(d);
+  });
+  document.querySelectorAll('.del-deuda').forEach(b => b.onclick = () => {
+    const id = Number(b.dataset.id);
+    mostrarConfirmacion('¿Eliminar esta deuda?', async () => {
+      await db.deudaMovimientos.where('deudaId').equals(id).delete();
+      await borrarEntidad('deudas', id);
+      renderDeudas();
+    });
+  });
+  document.querySelectorAll('.ver-deuda').forEach(b => b.onclick = () => mostrarDetalleDeuda(Number(b.dataset.id)));
 }
 
 function renderTiposCambio() {
@@ -1300,7 +1359,7 @@ async function calcularPnLPorActivo() {
 async function datosSavebackTin() {
   const [movs, prestamos] = await Promise.all([
     db.movimientos.where('tipo').equals('saveback').toArray(),
-    db.prestamos.toArray()
+    db.deudas.toArray()
   ]);
   const porMes = {};
   movs.forEach(m => {
@@ -1309,7 +1368,7 @@ async function datosSavebackTin() {
   });
   const labels = Object.keys(porMes).sort();
   const saveData = labels.map(l => porMes[l]);
-  const tin = prestamos[0]?.tin || 0;
+  const tin = prestamos[0]?.tipoInteres || prestamos[0]?.tin || 0;
   const tinData = labels.map(() => tin);
   return { labels, saveData, tinData };
 }
@@ -1984,11 +2043,167 @@ async function mostrarModalTransaccion(activos, trans) {
     const id = form.dataset.id;
     const prom = id ? actualizarEntidad('transactions', { ...data, id: Number(id) })
                     : actualizarEntidad('transactions', data);
-    prom.then(() => {
+  prom.then(() => {
       modal.classList.add('hidden');
       renderTransacciones();
     });
   };
+}
+
+// ----- Modal Deuda -----
+function crearModalDeuda() {
+  if (document.getElementById('deuda-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'deuda-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nueva deuda</h3>
+      <form id="form-deuda">
+        <select name="tipo">
+          <option value="Préstamo personal">Préstamo personal</option>
+          <option value="Hipoteca">Hipoteca</option>
+        </select>
+        <input name="descripcion" placeholder="Descripción" required />
+        <input name="entidad" id="inp-entidad" list="lista-bancos" placeholder="Entidad" />
+        <input type="date" name="fechaInicio" required />
+        <input type="date" name="fechaVencimiento" />
+        <input type="number" step="any" name="capitalInicial" placeholder="Capital inicial" required />
+        <input type="number" step="any" name="tipoInteres" placeholder="TIN %" required />
+        <label><input type="checkbox" name="interesFijo" /> Interés fijo</label>
+        <input name="inmuebleAsociado" placeholder="Inmueble (si hipoteca)" />
+        <textarea name="notas" placeholder="Notas"></textarea>
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-deuda">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+  if (!document.getElementById('lista-bancos')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'lista-bancos';
+    document.body.appendChild(dl);
+  }
+}
+
+function mostrarModalDeuda(deuda) {
+  crearModalDeuda();
+  const modal = document.getElementById('deuda-modal');
+  const form = document.getElementById('form-deuda');
+  const dl = document.getElementById('lista-bancos');
+  dl.innerHTML = getBancos().map(b => `<option value="${b}">`).join('');
+  if (deuda) {
+    modal.querySelector('h3').textContent = 'Editar deuda';
+    Object.keys(deuda).forEach(k => {
+      if (form[k] !== undefined) form[k].value = deuda[k] || '';
+    });
+    form.interesFijo.checked = !!deuda.interesFijo;
+    form.dataset.id = deuda.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nueva deuda';
+    form.reset();
+    form.dataset.id = '';
+  }
+  modal.classList.remove('hidden');
+  modal.querySelector('#cancel-deuda').onclick = () => modal.classList.add('hidden');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    data.capitalInicial = parseFloat(data.capitalInicial);
+    data.tipoInteres = parseFloat(data.tipoInteres);
+    data.interesFijo = form.interesFijo.checked;
+    const id = form.dataset.id;
+    if (id) await actualizarEntidad('deudas', { ...data, id: Number(id) });
+    else await db.deudas.add(data);
+    modal.classList.add('hidden');
+    renderDeudas();
+  };
+}
+
+function crearModalDeudaMovimiento() {
+  if (document.getElementById('deuda-mov-modal')) return;
+  const div = document.createElement('div');
+  div.id = 'deuda-mov-modal';
+  div.className = 'modal hidden';
+  div.innerHTML = `
+    <div class="modal-content">
+      <h3>Nuevo movimiento</h3>
+      <form id="form-deuda-mov">
+        <input type="hidden" name="deudaId" />
+        <input type="date" name="fecha" required />
+        <select name="tipoMovimiento">
+          <option value="Pago capital">Pago capital</option>
+          <option value="Pago interés">Pago interés</option>
+          <option value="Comisión">Comisión</option>
+          <option value="Cancelación anticipada">Cancelación anticipada</option>
+        </select>
+        <input type="number" step="any" name="importe" placeholder="Importe" required />
+        <input name="nota" placeholder="Nota" />
+        <button class="btn">Guardar</button>
+        <button type="button" class="btn" id="cancel-deuda-mov">Cancelar</button>
+      </form>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function mostrarModalDeudaMovimiento(deudaId, mov) {
+  crearModalDeudaMovimiento();
+  const modal = document.getElementById('deuda-mov-modal');
+  const form = document.getElementById('form-deuda-mov');
+  form.deudaId.value = deudaId;
+  if (mov) {
+    modal.querySelector('h3').textContent = 'Editar movimiento';
+    form.fecha.value = mov.fecha || '';
+    form.tipoMovimiento.value = mov.tipoMovimiento;
+    form.importe.value = mov.importe;
+    form.nota.value = mov.nota || '';
+    form.dataset.id = mov.id;
+  } else {
+    modal.querySelector('h3').textContent = 'Nuevo movimiento';
+    form.reset();
+    form.deudaId.value = deudaId;
+    form.dataset.id = '';
+  }
+  modal.classList.remove('hidden');
+  modal.querySelector('#cancel-deuda-mov').onclick = () => modal.classList.add('hidden');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    data.deudaId = Number(data.deudaId);
+    data.importe = parseFloat(data.importe);
+    const id = form.dataset.id;
+    if (id) await actualizarEntidad('deudaMovimientos', { ...data, id: Number(id) });
+    else await db.deudaMovimientos.add(data);
+    modal.classList.add('hidden');
+    mostrarDetalleDeuda(data.deudaId);
+    renderDeudas();
+  };
+}
+
+async function mostrarDetalleDeuda(id) {
+  const cont = document.getElementById('detalle-deuda');
+  const deuda = await db.deudas.get(id);
+  const movs = await db.deudaMovimientos.where('deudaId').equals(id).toArray();
+  const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
+  cont.innerHTML = `<section class="detalle">
+      <h3>${deuda.descripcion}</h3>
+      <table class="tabla-detalle responsive-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th class="col-ocultar">Nota</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+      <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
+    </section>`;
+  document.getElementById('add-mov-deuda').onclick = () => mostrarModalDeudaMovimiento(id);
+  cont.querySelectorAll('.edit-dmov').forEach(b => b.onclick = async () => {
+    const mv = await db.deudaMovimientos.get(Number(b.dataset.id));
+    if (mv) mostrarModalDeudaMovimiento(id, mv);
+  });
+  cont.querySelectorAll('.del-dmov').forEach(b => b.onclick = () => {
+    const movId = Number(b.dataset.id);
+    mostrarConfirmacion('¿Borrar movimiento?', async () => {
+      await borrarEntidad('deudaMovimientos', movId);
+      mostrarDetalleDeuda(id);
+      renderDeudas();
+    });
+  });
 }
 
 // ----- Modal Análisis Value -----
