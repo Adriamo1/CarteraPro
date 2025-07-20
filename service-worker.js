@@ -9,8 +9,9 @@ const urlsToCache = [
   '/icon512.png',
   // Añade tus scripts si quieres cachearlos:
   '/js/app.js',
-  'https://cdn.jsdelivr.net/npm/dexie@3.2.3/dist/dexie.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
+  '/libs/dexie.min.js',
+  '/libs/chart.umd.js',
+  '/libs/papaparse.min.js',
   '/version.json'
 ];
 
