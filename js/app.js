@@ -30,21 +30,24 @@ db.ajustes = db.settings;
 // Para compatibilidad con versiones anteriores
 window.db = db;
 
-const DEFAULT_DATA = {
-  assets: [],
-  transactions: [],
-  income: [],
-  expenses: [],
-  exchangeRates: [],
-  settings: []
-};
+const STORE_NAMES = [
+  'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
+  'expenses', 'income', 'suscripciones', 'bienes', 'prestamos', 'seguros',
+  'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
+  'interestRates', 'settings'
+];
+
+const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
+  obj[name] = [];
+  return obj;
+}, {});
 
 let appState = null;
 
 async function cargarEstado() {
   const datos = {};
-  for (const ent of ['assets','transactions','income','expenses','exchangeRates','settings']) {
-    datos[ent] = await db[ent].toArray();
+  for (const name of STORE_NAMES) {
+    datos[name] = await db[name].toArray();
   }
   if (Object.values(datos).every(arr => arr.length === 0)) {
     await guardarEstado(DEFAULT_DATA);
@@ -57,20 +60,16 @@ async function cargarEstado() {
 async function guardarEstado(estado) {
   const data = estado || appState;
   if (!data) return;
-  await Promise.all([
-    db.assets.bulkPut(data.assets || []),
-    db.transactions.bulkPut(data.transactions || []),
-    db.income.bulkPut(data.income || []),
-    db.expenses.bulkPut(data.expenses || []),
-    db.exchangeRates.bulkPut(data.exchangeRates || []),
-    db.settings.bulkPut(data.settings || [])
-  ]);
+  const ops = [];
+  for (const name of STORE_NAMES) {
+    if (data[name]) ops.push(db[name].bulkPut(data[name]));
+  }
+  await Promise.all(ops);
 }
 
 async function actualizarEntidad(nombre, objeto) {
-  const store = db[nombre];
-  if (!store) throw new Error('Entidad no válida');
-  const id = await store.put(objeto);
+  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
+  const id = await db[nombre].put(objeto);
   if (appState && appState[nombre]) {
     const idx = appState[nombre].findIndex(e => e.id === id);
     if (idx >= 0) appState[nombre][idx] = { ...objeto, id };
@@ -81,14 +80,29 @@ async function actualizarEntidad(nombre, objeto) {
 }
 
 async function borrarEntidad(nombre, id) {
-  const store = db[nombre];
-  if (!store) throw new Error('Entidad no válida');
-  await store.delete(id);
+  if (!STORE_NAMES.includes(nombre)) throw new Error('Entidad no válida');
+  await db[nombre].delete(id);
   if (appState && appState[nombre]) {
     appState[nombre] = appState[nombre].filter(e => e.id !== id);
   }
   await guardarEstado(appState);
 }
+
+db.on('changes', changes => {
+  if (!appState) return;
+  for (const ch of changes) {
+    const name = ch.table;
+    if (!appState[name]) continue;
+    if (ch.type === 1 || ch.type === 'create') {
+      appState[name].push({ ...(ch.obj || {}), id: ch.key });
+    } else if (ch.type === 2 || ch.type === 'update') {
+      const idx = appState[name].findIndex(e => e.id === ch.key);
+      if (idx >= 0) Object.assign(appState[name][idx], ch.obj || ch.mods || {});
+    } else if (ch.type === 3 || ch.type === 'delete') {
+      appState[name] = appState[name].filter(e => e.id !== ch.key);
+    }
+  }
+});
 
 
 const app = document.getElementById("app");
@@ -1346,8 +1360,12 @@ function parseCSV(text) {
 
 async function exportarBackup() {
   const backup = {};
-  for (const tabla of db.tables) {
-    backup[tabla.name] = await tabla.toArray();
+  if (appState) {
+    Object.assign(backup, appState);
+  } else {
+    for (const tabla of db.tables) {
+      backup[tabla.name] = await tabla.toArray();
+    }
   }
   const filename = `CarteraPRO_backup_${new Date().toISOString().slice(0,10)}.json`;
   const blob = new Blob([JSON.stringify(backup)], {
@@ -1375,6 +1393,7 @@ async function importarBackupDesdeArchivo(file) {
         }
       }
     }
+    appState = JSON.parse(JSON.stringify(data));
     alert('Copia restaurada correctamente');
     return true;
   } catch (e) {
