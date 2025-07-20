@@ -1,5 +1,4 @@
-// app.js sin módulos, todo local
-// Definición principal de la base de datos usando Dexie
+// Configuración de IndexedDB con Dexie
 const db = new Dexie('carteraPRO');
 db.version(1).stores({
   activos: "++id, nombre, ticker, tipo, sector, moneda, valorActual, region, broker, isin, etiquetas",
