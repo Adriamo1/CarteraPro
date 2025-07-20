@@ -68,6 +68,9 @@ db.version(3).stores({
 db.version(4).stores({
   portfolioHistory: "++id, fecha, valorTotal, saldoCuenta"
 });
+db.version(5).stores({
+  deudaHistory: "++id, deudaId, fecha, saldo"
+});
 db.activos = db.assets;
 db.transacciones = db.transactions;
 db.gastos = db.expenses;
@@ -83,7 +86,7 @@ const STORE_NAMES = [
   'assets', 'transactions', 'movimientos', 'cuentas', 'tarjetas',
   'expenses', 'income', 'suscripciones', 'bienes', 'deudas', 'movimientosDeuda', 'seguros',
   'historico', 'carteras', 'documentos', 'logs', 'exchangeRates',
-  'interestRates', 'settings', 'backups', 'portfolioHistory'
+  'interestRates', 'settings', 'backups', 'portfolioHistory', 'deudaHistory'
 ];
 
 const DEFAULT_DATA = STORE_NAMES.reduce((obj, name) => {
@@ -164,6 +167,7 @@ const state = {
   accountMovements: [],
   interestRates: [],
   portfolioHistory: [],
+  deudaHistory: [],
   deudas: [],
   movimientosDeuda: [],
   settings: { lastExchangeUpdate: null }
@@ -552,6 +556,50 @@ async function totalInteresesPagadosDeuda() {
     .reduce((s,m)=>s+(+m.importe||0),0);
 }
 
+async function prioridadAmortizacionDeudas() {
+  const deudas = await db.deudas.toArray();
+  const data = [];
+  for (const d of deudas) {
+    const saldo = await calcularSaldoPendiente(d);
+    if (saldo <= 0) continue;
+    data.push({ deuda: d, saldo });
+  }
+  if (!data.length) return [];
+  const maxTin = Math.max(...data.map(r => parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0)));
+  const maxSaldo = Math.max(...data.map(r => r.saldo));
+  const maxDias = Math.max(...data.map(r => r.deuda.fechaVencimiento ? diffDias(new Date(), new Date(r.deuda.fechaVencimiento)) : 0));
+  return data.map(r => {
+    const tin = parseFloat(r.deuda.tipoInteres || r.deuda.tin || r.deuda.tae || 0);
+    const tinScore = maxTin ? tin / maxTin : 0;
+    const saldoScore = maxSaldo ? 1 - r.saldo / maxSaldo : 0;
+    let diasScore = 0;
+    if (r.deuda.fechaVencimiento) {
+      const dias = diffDias(new Date(), new Date(r.deuda.fechaVencimiento));
+      diasScore = maxDias ? 1 - Math.max(0, dias) / maxDias : 0;
+    }
+    const prioridad = (tinScore + saldoScore + diasScore) / 3;
+    return { id: r.deuda.id, prioridad };
+  }).sort((a,b) => b.prioridad - a.prioridad);
+}
+async function analizarCosteDeudasVsCuenta() {
+  if (!state.interestRates.length) {
+    state.interestRates = await db.interestRates.toArray();
+  }
+  const last = state.interestRates[state.interestRates.length - 1];
+  const tinCuenta = last ? parseFloat(last.tin) : 0;
+  const deudas = await db.deudas.toArray();
+  const res = [];
+  for (const d of deudas) {
+    const saldo = await calcularSaldoPendiente(d);
+    if (saldo <= 0) continue;
+    const tinDeuda = parseFloat(d.tipoInteres || d.tin || d.tae || 0);
+    if (tinDeuda > tinCuenta) {
+      res.push({ nombre: d.descripcion || d.tipo || 'deuda', tinCuenta, tinDeuda });
+    }
+  }
+  return res;
+}
+
 async function registrarHistoricoCartera() {
   const { valorTotal } = await calcularKpis();
   const cuentas = await db.cuentas.toArray();
@@ -566,6 +614,76 @@ async function registrarHistoricoCartera() {
       appState.portfolioHistory.push({ id, fecha, valorTotal, saldoCuenta });
     }
   }
+}
+
+async function registrarHistoricoDeuda(deudaId, fecha) {
+  const saldo = await calcularSaldoPendiente(deudaId);
+  const f = fecha || new Date().toISOString().slice(0,10);
+  const existe = await db.deudaHistory.where({ deudaId, fecha: f }).first();
+  if (existe) {
+    await db.deudaHistory.update(existe.id, { saldo });
+    if (appState && appState.deudaHistory) {
+      const idx = appState.deudaHistory.findIndex(h=>h.id===existe.id);
+      if (idx>=0) appState.deudaHistory[idx].saldo = saldo;
+    }
+  } else {
+    const id = await db.deudaHistory.add({ deudaId, fecha: f, saldo });
+    if (appState && appState.deudaHistory) {
+      appState.deudaHistory.push({ id, deudaId, fecha: f, saldo });
+    }
+  }
+}
+
+async function obtenerHistorialDeuda(deudaId) {
+  let hist = await db.deudaHistory.where('deudaId').equals(deudaId).sortBy('fecha');
+  if (!hist.length) {
+    const deuda = await db.deudas.get(deudaId);
+    if (!deuda) return [];
+    const movs = await db.movimientosDeuda.where('deudaId').equals(deudaId).toArray();
+    movs.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha));
+    let saldo = +deuda.capitalInicial || 0;
+    hist = [];
+    for (const m of movs) {
+      if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
+        saldo -= (+m.importe || 0);
+        const item = { deudaId, fecha: m.fecha, saldo };
+        hist.push(item);
+      }
+    }
+    if (hist.length) await db.deudaHistory.bulkAdd(hist);
+  }
+  return hist;
+}
+
+async function renderGraficoHistorialDeuda(id) {
+  if (!hasChart) return;
+  const hist = await obtenerHistorialDeuda(id);
+  if (!hist.length) return;
+  const movs = await db.movimientosDeuda.where('deudaId').equals(id).toArray();
+  movs.sort((a,b)=> new Date(a.fecha)-new Date(b.fecha));
+  const mapInt = {};
+  let total = 0;
+  for (const m of movs) {
+    if (m.tipoMovimiento === 'Pago interés' || m.tipoMovimiento === 'Comisión') {
+      total += (+m.importe || 0);
+    }
+    if (m.tipoMovimiento === 'Pago capital' || m.tipoMovimiento === 'Cancelación anticipada') {
+      mapInt[m.fecha] = total;
+    }
+  }
+  const labels = hist.map(h=>h.fecha);
+  const saldos = hist.map(h=>h.saldo);
+  const intereses = hist.map(h=>mapInt[h.fecha] || 0);
+  const ctx = document.getElementById('grafico-saldo-deuda');
+  if (!ctx) return;
+  new Chart(ctx.getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Saldo', data:saldos, borderColor:'#3498db', tension:0.2},
+      {label:'Interés acumulado', data:intereses, borderColor:'#e67e22', tension:0.2}
+    ]},
+    options:{responsive:true}
+  });
 }
 
 // Agrupa activos por broker contando número y valor
@@ -639,9 +757,16 @@ async function renderDashboard() {
   const brokerHtml = Object.entries(brokerRes)
     .map(([b,d]) => `<div>${b}: ${d.count} / ${formatCurrency(d.valor)}</div>`)
     .join('');
+  const amortizaciones = await analizarCosteDeudasVsCuenta();
+  const alertaAmort = amortizaciones.length
+    ? '<div class="alert pendiente">' +
+        amortizaciones.map(a => `💡 Tu cuenta remunera al ${a.tinCuenta}% pero estás pagando un ${a.tinDeuda}% por tu deuda ${a.nombre}. Podrías amortizar para ahorrar intereses.`).join('<br>') +
+      '</div>'
+    : '';
   app.innerHTML = `
     <h2>Panel de control</h2>
     ${objetivo>0?`<div class="alert ${cumplido?'cumplido':'pendiente'}">${cumplido?'🎯 ¡Has alcanzado tu objetivo anual de rentabilidad! <button id="reset-obj" class="btn btn-small">Reiniciar</button>':'Objetivo a '+(objetivo-roi).toFixed(2)+' %'}</div>`:''}
+    ${alertaAmort}
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-icon">💰</div>
@@ -1167,6 +1292,8 @@ async function renderDeudas() {
   let totalSaldo = 0, totalIntereses = 0, sumTinSaldo = 0;
   let proxVenc = null;
   let hayAlertas = false;
+  const prioridades = await prioridadAmortizacionDeudas();
+  const topPrioridad = new Set(prioridades.slice(0,3).map(p=>p.id));
   const filas = await Promise.all(deudas.map(async d => {
     const saldo = await calcularSaldoPendiente(d);
     const pagos = (+d.capitalInicial || 0) - saldo;
@@ -1185,8 +1312,9 @@ async function renderDeudas() {
     const vencida = vencDate && vencDate < new Date() && saldo > 0;
     hayAlertas = hayAlertas || vencida || sinPagoReciente;
     const alertIcons = `${vencida ? '⚠️' : ''}${sinPagoReciente ? ' ⏰' : ''}`;
+    const pri = topPrioridad.has(d.id) ? '<span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>' : '';
     return `<tr data-id="${d.id}">
-      <td>${d.tipo || ''}</td>
+      <td>${pri}${d.tipo || ''}</td>
       <td>${d.entidad || ''}</td>
       <td>${formatCurrency(d.capitalInicial)}</td>
       <td>${formatCurrency(saldo)}</td>
@@ -1200,12 +1328,15 @@ async function renderDeudas() {
     </tr>`;
   }));
 
+  const sugerencias = await analizarCosteDeudasVsCuenta();
+
   const tinMedio = totalSaldo ? (sumTinSaldo / totalSaldo).toFixed(2) : 0;
   const proxVencStr = proxVenc ? proxVenc.toISOString().slice(0,10) : '-';
   const tipos = [...new Set(deudas.map(d=>d.tipo).filter(Boolean))];
   let html = `<div class="card">
       <h2>Deudas</h2>
       ${hayAlertas?'<div class="alert pendiente">Hay deudas vencidas o sin pagos recientes</div>':''}
+      ${sugerencias.length?'<div class="alert pendiente">'+sugerencias.map(s=>s).join('<br>')+'</div>':''}
       <div class="filtros-table"><select id="filtro-deuda-tipo"><option value="">Todas</option>${tipos.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-icon">💰</div><div><div>Total pendiente</div><div class="kpi-value">${formatCurrency(totalSaldo)}</div></div></div>
@@ -1231,6 +1362,7 @@ async function renderDeudas() {
     const id = Number(b.dataset.id);
     mostrarConfirmacion('¿Eliminar esta deuda?', async () => {
       await db.movimientosDeuda.where('deudaId').equals(id).delete();
+      await db.deudaHistory.where('deudaId').equals(id).delete();
       await borrarEntidad('deudas', id);
       renderDeudas();
     });
@@ -1834,7 +1966,8 @@ async function importarJSON(file) {
     }
     if (!Array.isArray(data.assets) || !Array.isArray(data.transactions) ||
         !data.settings || !Array.isArray(data.deudas) ||
-        !Array.isArray(data.movimientosDeuda)) {
+        !Array.isArray(data.movimientosDeuda) ||
+        !Array.isArray(data.deudaHistory)) {
       alert('Archivo incompleto');
       return false;
     }
@@ -2498,6 +2631,9 @@ function mostrarModalDeudaMovimiento(deudaId, mov) {
     const id = form.dataset.id;
     if (id) await actualizarEntidad('movimientosDeuda', { ...data, id: Number(id) });
     else await db.movimientosDeuda.add(data);
+    if (data.tipoMovimiento === 'Pago capital' || data.tipoMovimiento === 'Cancelación anticipada') {
+      await registrarHistoricoDeuda(data.deudaId, data.fecha);
+    }
     modal.classList.add('hidden');
     mostrarDetalleDeuda(data.deudaId);
     renderDeudas();
@@ -2568,6 +2704,10 @@ function diffMeses(a, b) {
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
 }
 
+function diffDias(a, b) {
+  return Math.ceil((b - a) / 86400000);
+}
+
 async function calcularSaldoPendiente(id) {
   const deuda = typeof id === 'object' ? id : await db.deudas.get(id);
   if (!deuda) return 0;
@@ -2604,6 +2744,7 @@ async function registrarCuotaAutomatica(id, fecha) {
     { deudaId: id, fecha: f, tipoMovimiento: 'Pago interés', importe: parseFloat(info.interes.toFixed(2)) },
     { deudaId: id, fecha: f, tipoMovimiento: 'Pago capital', importe: parseFloat(info.capital.toFixed(2)) }
   ]);
+  await registrarHistoricoDeuda(id, f);
 }
 
 async function mostrarDetalleDeuda(id) {
@@ -2613,10 +2754,20 @@ async function mostrarDetalleDeuda(id) {
   const saldo = await calcularSaldoPendiente(deuda);
   let resumen = `<p><strong>${deuda.descripcion}</strong> (${deuda.tipo || ''})<br>
     Entidad: ${deuda.entidad || ''} · Capital inicial: ${formatCurrency(deuda.capitalInicial)} · Saldo pendiente: ${formatCurrency(saldo)} · Interés: ${(deuda.tipoInteres || deuda.tin || 0)}% · Vencimiento: ${deuda.fechaVencimiento || ''}</p>`;
+  const prioridades = await prioridadAmortizacionDeudas();
+  const top = new Set(prioridades.slice(0,3).map(p=>p.id));
+  if (top.has(deuda.id)) {
+    resumen += ' <span class="prioridad help" title="Prioridad alta para amortizar">⭐</span>';
+  }
   if (deuda.tipo === 'Hipoteca' && deuda.inmuebleAsociado) {
     const bienId = Number(deuda.inmuebleAsociado);
     const bien = await db.bienes.get(bienId);
     if (bien) resumen += `<p>Valor inmueble: ${formatCurrency(bien.valorActual || bien.valorCompra)}</p>`;
+  }
+  const tinCuenta = state.interestRates[state.interestRates.length-1]?.tin || 0;
+  const tinDeuda = parseFloat(deuda.tipoInteres || deuda.tin || deuda.tae || 0);
+  if (saldo > 0 && tinDeuda > tinCuenta) {
+    resumen += `<div class="alert pendiente">💡 Tu cuenta remunera al ${tinCuenta}% pero estás pagando un ${tinDeuda}% por tu deuda ${deuda.descripcion}. Podrías amortizar para ahorrar intereses.</div>`;
   }
   const filas = movs.map(m => `<tr data-id="${m.id}"><td>${m.fecha}</td><td>${m.tipoMovimiento}</td><td>${formatCurrency(m.importe)}</td><td class="col-ocultar">${m.nota||''}</td><td><button class="btn btn-small edit-dmov" data-id="${m.id}">✏️</button><button class="btn btn-small del-dmov" data-id="${m.id}">🗑️</button></td></tr>`).join('');
   cont.innerHTML = `<section class="detalle">
@@ -2625,6 +2776,7 @@ async function mostrarDetalleDeuda(id) {
       <button class="btn" id="add-mov-deuda">Añadir movimiento</button>
       <button class="btn" id="reg-cuota">Registrar cuota</button>
       <button class="btn" id="sim-cuota">Simular cuota</button>
+      <canvas id="grafico-saldo-deuda" height="120"></canvas>
     </section>`;
   document.getElementById('add-mov-deuda').onclick = () => mostrarModalDeudaMovimiento(id);
   document.getElementById('reg-cuota').onclick = async () => {
@@ -2655,6 +2807,7 @@ async function mostrarDetalleDeuda(id) {
       renderDeudas();
     });
   });
+  renderGraficoHistorialDeuda(id);
 }
 
 // ----- Modal Análisis Value -----
@@ -2952,6 +3105,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   state.portfolioHistory = await db.portfolioHistory.toArray();
   state.deudas = await db.deudas.toArray();
   state.movimientosDeuda = await db.movimientosDeuda.toArray();
+  state.deudaHistory = await db.deudaHistory.toArray();
   document.body.setAttribute('data-theme', getTema());
   initDragAndDrop();
   registrarHistoricoCartera();
